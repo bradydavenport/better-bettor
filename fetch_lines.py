@@ -29,9 +29,10 @@ Normalized output (one dict per game), sign convention: positive spread = home f
     }
 
 Usage:
-    python fetch_lines.py --sport nfl --out lines.json
-    python fetch_lines.py --sport nfl --book pinnacle --raw        # dump untouched API JSON
-    python fetch_lines.py --sport ncaaf --source theoddsapi --out cfb.json
+    python fetch_lines.py --sport nfl --out lines.json            # next 8 days
+    python fetch_lines.py --sport nfl --drop-empty --out lines.json  # only priced games
+    python fetch_lines.py --sport nfl --days 0 --raw              # whole season, raw JSON
+    python fetch_lines.py --sport ncaaf --out cfb.json
 
 Env:
     ODDS_API_KEY   The Odds API key (https://the-odds-api.com/ , free 500 req/mo)
@@ -42,7 +43,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 from dotenv import load_dotenv
@@ -121,15 +122,19 @@ class TheOddsAPIAdapter:
                   file=sys.stderr)
         return r.json()
 
-    def fetch_raw(self, sport):
+    def fetch_raw(self, sport, days=0):
         api_key = SPORT_KEYS[sport][0]
-        return self._get(
-            f"/sports/{api_key}/odds",
+        params = dict(
             bookmakers=self.book,
             regions="eu",  # Pinnacle lives here; ignored when `bookmakers` is set
             markets="h2h,spreads,totals",
             oddsFormat="american",
         )
+        if days:
+            # server-side window: trims the payload and doesn't cost extra
+            cutoff = datetime.now(timezone.utc) + timedelta(days=days)
+            params["commenceTimeTo"] = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+        return self._get(f"/sports/{api_key}/odds", **params)
 
     def normalize(self, sport, raw):
         games = []
@@ -219,14 +224,13 @@ class SportsGameOddsAdapter:
             sys.exit(f"SportsGameOdds {r.status_code}: {r.text}")
         return r.json()
 
-    def fetch_raw(self, sport):
+    def fetch_raw(self, sport, days=0):
         league = SPORT_KEYS[sport][1]
-        return self._get(
-            "/events",
-            leagueID=league,
-            bookmakerID=self.book,
-            oddsAvailable="true",
-        )
+        params = dict(leagueID=league, bookmakerID=self.book, oddsAvailable="true")
+        if days:
+            cutoff = datetime.now(timezone.utc) + timedelta(days=days)
+            params["startsBefore"] = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+        return self._get("/events", **params)
 
     def normalize(self, sport, raw):
         # Docs shape: {"data": [ { ...event..., "odds": { "<oddID>": {...} } } ]}
@@ -285,6 +289,11 @@ def main():
                     help="odds source (default: theoddsapi)")
     ap.add_argument("--book", default=None,
                     help="bookmaker key override (default: source's default)")
+    ap.add_argument("--days", type=int, default=8,
+                    help="only games starting within N days (0 = no limit; "
+                         "default: 8, i.e. the upcoming slate)")
+    ap.add_argument("--drop-empty", action="store_true",
+                    help="omit games that have no spread from this book yet")
     ap.add_argument("--out", default=None,
                     help="write normalized JSON here (default: stdout)")
     ap.add_argument("--raw", action="store_true",
@@ -294,13 +303,17 @@ def main():
     cls, env_var, default_book = ADAPTERS[args.source]
     adapter = cls(os.getenv(env_var), book=args.book or default_book)
 
-    raw = adapter.fetch_raw(args.sport)
+    raw = adapter.fetch_raw(args.sport, days=args.days)
 
     if args.raw:
         payload = raw
     else:
         payload = adapter.normalize(args.sport, raw)
-        print(f"[ok] {len(payload)} games — {args.sport} @ {adapter.book}",
+        if args.drop_empty:
+            payload = [g for g in payload if g.get("spread") is not None]
+        payload.sort(key=lambda g: g.get("commence_time") or "")
+        print(f"[ok] {len(payload)} games — {args.sport} @ {adapter.book}"
+              + (f" (next {args.days}d)" if args.days else ""),
               file=sys.stderr)
 
     text = json.dumps(payload, indent=2)
