@@ -428,6 +428,8 @@ def main():
                     help="print the usage counter and exit (no API call)")
     ap.add_argument("--out", default=None,
                     help="write normalized JSON here (default: stdout)")
+    ap.add_argument("--no-render", action="store_true",
+                    help="skip writing the .csv / .html alongside --out")
     ap.add_argument("--raw", action="store_true",
                     help="dump the untouched API response instead of normalizing")
     args = ap.parse_args()
@@ -474,6 +476,12 @@ def main():
         with open(args.out, "w") as f:
             f.write(text + "\n")
         print(f"[ok] wrote {args.out}", file=sys.stderr)
+        if not args.raw and not args.no_render:
+            import render
+            from pathlib import Path
+            p = Path(args.out)
+            csv_path, html_path = render.render(payload, stem=p.stem, outdir=p.parent)
+            print(f"[ok] wrote {csv_path}  +  {html_path}", file=sys.stderr)
     else:
         print(text)
 
