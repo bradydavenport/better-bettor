@@ -10,3 +10,6 @@ venv/
 # fetched data
 lines.json
 *.raw.json
+
+# local usage counter
+.usage.json

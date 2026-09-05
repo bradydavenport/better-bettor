@@ -32,11 +32,19 @@ Usage:
     python fetch_lines.py --sport nfl --out lines.json            # next 8 days
     python fetch_lines.py --sport nfl --drop-empty --out lines.json  # only priced games
     python fetch_lines.py --sport nfl --days 0 --raw              # whole season, raw JSON
-    python fetch_lines.py --sport ncaaf --out cfb.json
+    python fetch_lines.py --status                               # show credit counter
+    python fetch_lines.py --sport nfl --force                    # override daily limit
+
+Quota: The Odds API free tier = 500 credits / calendar month. cost = markets x
+regions, so our default pull is 3 credits. Going over is NOT billed — the API
+just 401s until the 1st. A local limiter (see Usage class) caps spend at 15
+credits/day = 450/month, with a 50-credit buffer reachable via --force.
+Counters persist in .usage.json.
 
 Env:
-    ODDS_API_KEY   The Odds API key (https://the-odds-api.com/ , free 500 req/mo)
-    SGO_API_KEY    SportsGameOdds key (only needed for --source sportsgameodds)
+    ODDS_API_KEY       The Odds API key (https://the-odds-api.com/ , free tier)
+    ODDS_DAILY_LIMIT   daily credit cap (default 15); --daily-limit overrides
+    SGO_API_KEY        SportsGameOdds key (only for --source sportsgameodds)
 """
 
 import argparse
@@ -89,6 +97,108 @@ def _abbr(sport, team):
 
 
 # --------------------------------------------------------------------------- #
+# usage limiter
+# --------------------------------------------------------------------------- #
+#
+# The Odds API free tier is 500 *credits* per calendar month. A credit is not a
+# call: cost = (# markets) x (# regions). Our default pull is 3 markets x 1
+# region = 3 credits. Going over does NOT incur a charge — the API just returns
+# 401/429 until the 1st of the next month. This limiter is only there to stop
+# you burning the month early.
+#
+#   daily limit 15 credits  = 5 pulls/day = 450/month, leaving a 50-credit
+#   buffer you can dip into with --force.
+
+MONTHLY_CAP = 500
+DEFAULT_DAILY_LIMIT = int(os.getenv("ODDS_DAILY_LIMIT", "15"))
+USAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".usage.json")
+
+
+class Usage:
+    """Local credit counter, persisted to .usage.json next to this script."""
+
+    def __init__(self, path=USAGE_FILE):
+        self.path = path
+        self.data = {
+            "day": "", "day_credits": 0,
+            "month": "", "month_credits": 0, "month_force_credits": 0,
+            "api_remaining": None, "api_used": None,
+            "last_call": None, "last_cost": None,
+        }
+        try:
+            with open(self.path) as f:
+                self.data.update(json.load(f))
+        except (FileNotFoundError, ValueError):
+            pass
+        self._rollover()
+
+    def _rollover(self):
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        month = today[:7]
+        if self.data["day"] != today:
+            self.data["day"], self.data["day_credits"] = today, 0
+        if self.data["month"] != month:
+            self.data["month"] = month
+            self.data["month_credits"] = 0
+            self.data["month_force_credits"] = 0
+
+    def save(self):
+        with open(self.path, "w") as f:
+            json.dump(self.data, f, indent=2)
+
+    def check(self, cost, daily_limit, force=False):
+        d = self.data
+        if d["month_credits"] + cost > MONTHLY_CAP:
+            sys.exit(f"[blocked] monthly cap {MONTHLY_CAP} would be exceeded "
+                     f"({d['month_credits']} used). Resets on the 1st — no charge.")
+        if d["api_remaining"] is not None and d["api_remaining"] < cost:
+            sys.exit(f"[blocked] API reports only {d['api_remaining']} credits left "
+                     f"this month (as of last call).")
+        if not force and d["day_credits"] + cost > daily_limit:
+            sys.exit(
+                f"[blocked] daily limit {daily_limit} would be exceeded "
+                f"({d['day_credits']} used today, this call costs {cost}).\n"
+                f"          --force to dip into the monthly buffer, "
+                f"--status to see counters."
+            )
+
+    def record(self, cost, force=False, api_remaining=None, api_used=None):
+        d = self.data
+        d["day_credits"] += cost
+        d["month_credits"] += cost
+        if force:
+            d["month_force_credits"] += cost
+        if api_remaining is not None:
+            d["api_remaining"] = api_remaining
+            # the API's own tally is authoritative when we have it
+            d["month_credits"] = max(d["month_credits"], MONTHLY_CAP - api_remaining)
+        if api_used is not None:
+            d["api_used"] = api_used
+        d["last_call"] = _now_iso()
+        d["last_cost"] = cost
+        self.save()
+
+    def render(self, daily_limit):
+        d = self.data
+        soft = daily_limit * 30
+        buf = MONTHLY_CAP - soft
+        day_left = daily_limit - d["day_credits"]
+        out = [
+            "Usage — The Odds API  (credits, not calls; default pull = 3 credits)",
+            f"  Today  {d['day']}   {d['day_credits']:>3} / {daily_limit}"
+            f"   ({day_left} left ≈ {max(day_left, 0) // 3} pulls)",
+            f"  Month  {d['month']}      {d['month_credits']:>3} / {MONTHLY_CAP}"
+            + (f"   ({d['api_remaining']} left, API-confirmed at last call)"
+               if d["api_remaining"] is not None else "   (no API call yet)"),
+            f"  Buffer over {soft} soft cap: {d['month_force_credits']} / {buf} "
+            f"used via --force",
+        ]
+        if d["last_call"]:
+            out.append(f"  Last call {d['last_call']}  (cost {d['last_cost']})")
+        return "\n".join(out)
+
+
+# --------------------------------------------------------------------------- #
 # adapters
 # --------------------------------------------------------------------------- #
 
@@ -101,12 +211,18 @@ class TheOddsAPIAdapter:
     """
 
     BASE = "https://api.the-odds-api.com/v4"
+    MARKETS = "h2h,spreads,totals"
 
     def __init__(self, api_key, book="pinnacle"):
         if not api_key:
             sys.exit("ODDS_API_KEY not set (put it in .env or export it).")
         self.api_key = api_key
         self.book = book
+        # cost = (# markets) x (# regions); we use one region
+        self.estimated_cost = len(self.MARKETS.split(","))
+        self.last_cost = None
+        self.api_remaining = None
+        self.api_used = None
 
     def _get(self, path, **params):
         params["apiKey"] = self.api_key
@@ -117,6 +233,9 @@ class TheOddsAPIAdapter:
         rem = r.headers.get("x-requests-remaining")
         used = r.headers.get("x-requests-used")
         last = r.headers.get("x-requests-last")
+        self.api_remaining = int(float(rem)) if rem is not None else None
+        self.api_used = int(float(used)) if used is not None else None
+        self.last_cost = int(float(last)) if last is not None else None
         if rem is not None:
             print(f"[quota] remaining={rem} used={used} this_call={last}",
                   file=sys.stderr)
@@ -127,7 +246,7 @@ class TheOddsAPIAdapter:
         params = dict(
             bookmakers=self.book,
             regions="eu",  # Pinnacle lives here; ignored when `bookmakers` is set
-            markets="h2h,spreads,totals",
+            markets=self.MARKETS,
             oddsFormat="american",
         )
         if days:
@@ -212,6 +331,11 @@ class SportsGameOddsAdapter:
             sys.exit("SGO_API_KEY not set (put it in .env or export it).")
         self.api_key = api_key
         self.book = book
+        # SGO isn't credit-metered the same way; treat a call as 1 unit locally
+        self.estimated_cost = 1
+        self.last_cost = 1
+        self.api_remaining = None
+        self.api_used = None
 
     def _get(self, path, **params):
         r = requests.get(
@@ -294,16 +418,45 @@ def main():
                          "default: 8, i.e. the upcoming slate)")
     ap.add_argument("--drop-empty", action="store_true",
                     help="omit games that have no spread from this book yet")
+    ap.add_argument("--daily-limit", type=int, default=DEFAULT_DAILY_LIMIT,
+                    help=f"max credits to spend per day (default: {DEFAULT_DAILY_LIMIT}"
+                         f", or $ODDS_DAILY_LIMIT). 1 pull = 3 credits.")
+    ap.add_argument("--force", action="store_true",
+                    help="ignore the daily limit for this run (dips into the "
+                         "monthly buffer; still hard-stops at the 500 cap)")
+    ap.add_argument("--status", action="store_true",
+                    help="print the usage counter and exit (no API call)")
     ap.add_argument("--out", default=None,
                     help="write normalized JSON here (default: stdout)")
     ap.add_argument("--raw", action="store_true",
                     help="dump the untouched API response instead of normalizing")
     args = ap.parse_args()
 
+    usage = Usage()
+
+    if args.status:
+        print(usage.render(args.daily_limit))
+        return
+
     cls, env_var, default_book = ADAPTERS[args.source]
     adapter = cls(os.getenv(env_var), book=args.book or default_book)
 
+    metered = args.source == "theoddsapi"
+    if metered:
+        usage.check(adapter.estimated_cost, args.daily_limit, force=args.force)
+
     raw = adapter.fetch_raw(args.sport, days=args.days)
+
+    if metered:
+        usage.record(adapter.last_cost or adapter.estimated_cost,
+                     force=args.force,
+                     api_remaining=adapter.api_remaining,
+                     api_used=adapter.api_used)
+        d = usage.data
+        print(f"[usage] today {d['day_credits']}/{args.daily_limit}  "
+              f"month {d['month_credits']}/{MONTHLY_CAP}  "
+              f"({d['api_remaining']} left)  —  --status for detail",
+              file=sys.stderr)
 
     if args.raw:
         payload = raw
