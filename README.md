@@ -121,8 +121,8 @@ python render.py data/nfl.json   # wrapped or bare-list file, either works
 
 ## Getting lines into a plain Claude.ai chat
 
-`.github/workflows/pull-lines.yml` runs the fetch on a schedule (1×/day ≈ 90
-credits/month) and commits `data/nfl.json`. To wire it up:
+`.github/workflows/pull-lines.yml` runs the fetch on a schedule (1×/day,
+ml + spread only ≈ 60 credits/month) and commits `data/nfl.json`. To wire it up:
 
 1. **Create the repo as public** (raw URLs on private repos need an expiring
    token that Claude.ai can't use). Betting lines aren't sensitive; the key
@@ -154,13 +154,14 @@ bypass it.
 
 ### Cron
 
-Runs 1×/day (`0 13 * * *` = 13:00 UTC, ~90 credits/month) to leave most of the
-500 for manual `gh workflow run` and local pulls. `data/nfl.json` +
-`data/usage.json` are re-committed each run they change — that's the durable
-counter, and doubles as a heartbeat. The `.usage.json` limiter does **not**
-persist between CI runs, so the `cron:` frequency is the real budget — keep the
-math under 500 (over-cap just 401s, no charge). Bump to `0 */12 * * *` (2×/day)
-or `0 */6 * * *` (4×/day) if you want it fresher.
+Runs 1×/day (`0 13 * * *` = 13:00 UTC) pulling **`--markets ml,spread`** =
+2 credits/run, ~60/month — totals are left for manual pulls. That leaves ~440
+of the 500 for `gh workflow run` and local pulls. `data/nfl.json` +
+`data/usage.json` are re-committed each run they change — the durable counter,
+also a heartbeat. The `.usage.json` limiter does **not** persist between CI
+runs, so the `cron:` line + `--markets` are the real budget — keep it under 500
+(over-cap just 401s, no charge). Bump the schedule to `0 */12 * * *` (2×/day) or
+add `total` to `--markets` if you want the cron to carry everything.
 
 ### Keeping the code private instead
 

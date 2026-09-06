@@ -4,10 +4,10 @@ name: pull-lines
 # by raw URL. Also runnable on demand from the Actions tab ("Run workflow") or
 # `gh workflow run pull-lines.yml`.
 #
-# Budget: each run spends 3 of the 500 free monthly credits. The cron frequency
-# IS the budget here — the local .usage.json limiter does not persist between CI
-# runs, so keep the schedule sane.
-#   1x/day (current) ≈ 90/month, leaving ~410 for manual + local pulls
+# Budget: cost = 1 credit per market. This run pulls ml + spread = 2 credits;
+# totals are left for manual pulls. The cron frequency IS the budget here — the
+# local .usage.json limiter does not persist between CI runs, so keep it sane.
+#   1x/day x 2 markets (current) ≈ 60/month, leaving ~440 for manual + local
 #   "0 13 * * *" -> daily 13:00 UTC   "0 */12 * * *" -> 2x/day   "0 */6 * * *" -> 4x/day
 # Going over the 500 cap is not billed; the API just 401s until the 1st.
 
@@ -38,7 +38,7 @@ jobs:
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: |
-          python fetch_lines.py --sport nfl --days 12 --drop-empty \
+          python fetch_lines.py --sport nfl --days 12 --drop-empty --markets ml,spread \
             --out data/nfl.json --no-render --force
 
       - name: Commit if changed
