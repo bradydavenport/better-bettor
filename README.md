@@ -110,7 +110,7 @@ python render.py data/nfl.json   # wrapped or bare-list file, either works
 
 ## Getting lines into a plain Claude.ai chat
 
-`.github/workflows/pull-lines.yml` runs the fetch on a schedule (4×/day ≈ 360
+`.github/workflows/pull-lines.yml` runs the fetch on a schedule (1×/day ≈ 90
 credits/month) and commits `data/nfl.json`. To wire it up:
 
 1. **Create the repo as public** (raw URLs on private repos need an expiring
@@ -143,11 +143,13 @@ bypass it.
 
 ### Cron
 
-Runs 4×/day (`0 */6 * * *`, ~360 credits/month). `data/nfl.json` +
+Runs 1×/day (`0 13 * * *` = 13:00 UTC, ~90 credits/month) to leave most of the
+500 for manual `gh workflow run` and local pulls. `data/nfl.json` +
 `data/usage.json` are re-committed each run they change — that's the durable
 counter, and doubles as a heartbeat. The `.usage.json` limiter does **not**
 persist between CI runs, so the `cron:` frequency is the real budget — keep the
-math under 500 (over-cap just 401s, no charge).
+math under 500 (over-cap just 401s, no charge). Bump to `0 */12 * * *` (2×/day)
+or `0 */6 * * *` (4×/day) if you want it fresher.
 
 ### Keeping the code private instead
 
