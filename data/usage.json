@@ -1,0 +1,16 @@
+{
+  "month": "2026-09",
+  "credits_used": 21,
+  "credits_remaining": 479,
+  "monthly_cap": 500,
+  "pct_used": 4.2,
+  "pulls_left_est": 159,
+  "today": "2026-09-06",
+  "today_credits": 3,
+  "daily_limit": 15,
+  "buffer_used": 3,
+  "last_call": "2026-09-06T02:40:15Z",
+  "last_cost": 3,
+  "updated_at": "2026-09-06T02:40:15Z",
+  "note": "The Odds API free tier = 500 credits per calendar month, resets on the 1st. Exceeding it returns HTTP 401 until the reset \u2014 never a charge. One pull (h2h+spreads+totals) = 3 credits."
+}
