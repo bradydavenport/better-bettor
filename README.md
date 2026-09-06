@@ -30,20 +30,33 @@ Writes `lines.json` and (unless `--no-render`) `lines.csv` + `lines.html`.
 |---|---|
 | `--sport` | `nfl` (default), `ncaaf`, `nba`, `ncaab`, `mlb`, `nhl` |
 | `--markets` | `ml`, `spread`, `total` (comma-sep) or `all` (default). 1 credit per market. |
+| `--merge` | patch only the pulled markets into an existing `--out` file; the rest keep their last value + `*_at` stamp |
 | `--days N` | only games starting within N days (default 8; use 12 for a full NFL week incl. MNF) |
-| `--drop-empty` | skip games the book hasn't priced for any requested market |
+| `--drop-empty` | drop games with no line for any market (applied after `--merge`) |
 | `--source` | `theoddsapi` (default) or `sportsgameodds` (paid, carries Circa; adapter is a stub) |
 | `--book` | override the bookmaker key |
 | `--raw` | dump the untouched API response |
 
 ```bash
-python fetch_lines.py --sport nfl --markets spread --out spreads.json   # 1 credit
-python fetch_lines.py --sport nfl --markets ml,total --out ml_ou.json   # 2 credits
+python fetch_lines.py --sport nfl --markets spread --out spreads.json          # 1 credit
+python fetch_lines.py --sport nfl --markets total --merge --out lines.json      # patch totals in
 ```
 
 Aliases: `moneyline`/`h2h`/`money` → ml, `spreads`/`ats` → spread,
-`totals`/`ou` → total. Unrequested markets come back `null`; `_meta.markets`
-records what was pulled.
+`totals`/`ou` → total.
+
+### Per-market pulls + `--merge`
+
+Each market has its own `*_at` timestamp (`moneyline_at`, `spread_at`,
+`total_at`) = when it was last pulled. `--merge` reads the existing `--out`
+file and carries the markets you *didn't* pull this run — value and stamp —
+straight through, so **one file accumulates all three at their own cadences**:
+
+- `--markets ml,spread` → moneyline + spread refreshed, `total`/`total_at` untouched
+- `--markets total --merge` later → `total` refreshed, moneyline + spread untouched
+
+`_meta.pulled_markets` = what this run fetched; `_meta.markets_present` = what
+has a line in the file.
 
 ### Credits / rate limiting
 
@@ -67,8 +80,9 @@ Self-describing object — the consumer needs nothing but the file:
 {
   "_meta": {
     "source": "theoddsapi", "book": "pinnacle", "sport": "nfl",
-    "markets": ["h2h", "spreads", "totals"],
-    "fetched_at": "2026-09-13T12:00:00Z", "game_count": 16, "window_days": 12,
+    "pulled_markets": ["h2h", "spreads"],
+    "markets_present": ["h2h", "spreads", "totals"],
+    "fetched_at": "2026-09-13T13:00:04Z", "game_count": 16, "window_days": 12,
     "spread_convention": "`spread` is the HOME line; POSITIVE = home favored ...",
     "usage": { "credits_used": 138, "credits_remaining": 362, "monthly_cap": 500,
                "pulls_left_est": 120, "month": "2026-09", "updated_at": "..." }
@@ -78,10 +92,13 @@ Self-describing object — the consumer needs nothing but the file:
       "commence_time": "2026-09-13T17:00:00Z",
       "home_team": "Pittsburgh Steelers", "away_team": "Atlanta Falcons",
       "home_abbr": "PIT", "away_abbr": "ATL", "book": "pinnacle",
-      "spread": 3.0, "spread_price_home": -121, "spread_price_away": 107,
-      "total": 42.5, "total_over_price": -105, "total_under_price": -111,
       "moneyline_home": -179, "moneyline_away": 157,
-      "last_update": "2026-09-05T22:57:23Z", "fetched_at": "2026-09-05T22:57:23Z"
+      "moneyline_at": "2026-09-13T13:00:04Z",
+      "spread": 3.0, "spread_price_home": -121, "spread_price_away": 107,
+      "spread_at": "2026-09-13T13:00:04Z",
+      "total": 42.5, "total_over_price": -105, "total_under_price": -111,
+      "total_at": "2026-09-12T22:11:40Z",
+      "book_last_update": "2026-09-13T12:58:00Z"
     }
   ]
 }
@@ -137,6 +154,23 @@ ml + spread only ≈ 60 credits/month) and commits `data/nfl.json`. To wire it u
 3. Optionally trigger a first run now: Actions tab → **pull-lines** → *Run
    workflow*, or `gh workflow run pull-lines.yml`.
 
+### Pulling a market on demand
+
+The scheduled run does **ml + spread**. To fold in **totals** (or refresh just
+one market), trigger the workflow with an input — it `--merge`s into the same
+`data/nfl.json`, leaving the other markets and their timestamps alone:
+
+```bash
+gh workflow run pull-lines.yml -f markets=total     # or: ml | spread | ml,spread | all
+```
+
+or Actions tab → **pull-lines** → *Run workflow* → pick from the dropdown.
+Locally it's the same idea:
+
+```bash
+python fetch_lines.py --sport nfl --days 12 --merge --markets total --out data/nfl.json
+```
+
 ### The chat command
 
 The file explains its own fields (`_meta`), so the whole prompt is:
@@ -154,14 +188,14 @@ bypass it.
 
 ### Cron
 
-Runs 1×/day (`0 13 * * *` = 13:00 UTC) pulling **`--markets ml,spread`** =
-2 credits/run, ~60/month — totals are left for manual pulls. That leaves ~440
-of the 500 for `gh workflow run` and local pulls. `data/nfl.json` +
-`data/usage.json` are re-committed each run they change — the durable counter,
-also a heartbeat. The `.usage.json` limiter does **not** persist between CI
-runs, so the `cron:` line + `--markets` are the real budget — keep it under 500
-(over-cap just 401s, no charge). Bump the schedule to `0 */12 * * *` (2×/day) or
-add `total` to `--markets` if you want the cron to carry everything.
+Runs 1×/day (`0 13 * * *` = 13:00 UTC) with `--merge --markets ml,spread` =
+2 credits/run, ~60/month. Totals come from manual runs (above) and stay in the
+file between cron runs because every run merges rather than overwrites. That
+leaves ~440 of the 500 for on-demand pulls. `data/nfl.json` + `data/usage.json`
+are re-committed each run they change — the durable counter, also a heartbeat.
+The `.usage.json` limiter does **not** persist between CI runs, so the `cron:`
+line + market choices are the real budget — keep it under 500 (over-cap just
+401s, no charge).
 
 ### Keeping the code private instead
 

@@ -21,10 +21,11 @@ import sys
 from pathlib import Path
 
 FIELDS = [
-    "commence_time", "away_team", "away_abbr", "home_team", "home_abbr",
-    "book", "spread", "spread_price_home", "spread_price_away",
-    "total", "total_over_price", "total_under_price",
-    "moneyline_home", "moneyline_away", "last_update", "fetched_at",
+    "commence_time", "away_team", "away_abbr", "home_team", "home_abbr", "book",
+    "moneyline_home", "moneyline_away", "moneyline_at",
+    "spread", "spread_price_home", "spread_price_away", "spread_at",
+    "total", "total_over_price", "total_under_price", "total_at",
+    "book_last_update",
 ]
 
 
@@ -42,7 +43,10 @@ def write_html(games, path, meta=None):
     meta = meta or {}
     payload = json.dumps(games, separators=(",", ":"))
     book = meta.get("book") or (games[0].get("book") if games else "—") or "—"
-    fetched = meta.get("fetched_at") or (games[0].get("fetched_at", "") if games else "")
+    fetched = meta.get("fetched_at") or ""
+    present = meta.get("markets_present") or []
+    present_lbl = ", ".join({"h2h": "ML", "spreads": "spread", "totals": "total"}.get(m, m)
+                            for m in present)
     usage = meta.get("usage") or {}
     if usage:
         credits = (f"{usage.get('credits_used', '?')} / {usage.get('monthly_cap', 500)} "
@@ -51,6 +55,7 @@ def write_html(games, path, meta=None):
         credits = ""
     html = _TEMPLATE.replace("__BOOK__", _esc(book)) \
                     .replace("__FETCHED__", _esc(fetched)) \
+                    .replace("__PRESENT__", _esc(present_lbl)) \
                     .replace("__COUNT__", str(len(games))) \
                     .replace("__CREDITS__", _esc(credits)) \
                     .replace("__DATA__", payload)
@@ -111,6 +116,8 @@ _TEMPLATE = r"""<!doctype html>
   .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .fav { color: var(--fav); font-weight: 600; }
   .px { color: var(--muted); font-size: 12px; }
+  .upd { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .upd.stale { color: var(--fav); }
   .empty { color: var(--muted); }
   footer { margin-top: 22px; color: var(--muted); font-size: 12px; }
   code { background: var(--row-alt); padding: 1px 5px; border-radius: 4px; }
@@ -120,8 +127,8 @@ _TEMPLATE = r"""<!doctype html>
 <div class="wrap">
   <h1>__BOOK__ &middot; NFL lines</h1>
   <div class="sub">
-    <b>__COUNT__</b> games &nbsp;·&nbsp; fetched <b id="fetched">__FETCHED__</b>
-    <span id="ago"></span>
+    <b>__COUNT__</b> games &nbsp;·&nbsp; markets: <b>__PRESENT__</b>
+    &nbsp;·&nbsp; last pull <b id="fetched">__FETCHED__</b><span id="ago"></span>
     <span id="credits">__CREDITS__</span>
   </div>
   <div class="scroll">
@@ -135,8 +142,10 @@ _TEMPLATE = r"""<!doctype html>
   </table>
   </div>
   <footer>
-    Spread shown as the favorite's number. Full data + field notes in the
-    source <code>.json</code> (<code>_meta</code> block).
+    Spread shown as the favorite's number. The small age after each price is
+    when that market was last pulled (<span class="upd"><span class="stale">red</span></span>
+    = over a day old) — markets refresh on their own cadences. Full data + field
+    notes in the source <code>.json</code> (<code>_meta</code> block).
   </footer>
 </div>
 <script>
@@ -154,31 +163,47 @@ const ago = iso => {
   if (s < 172800) return Math.round(s/3600) + ' h ago';
   return Math.round(s/86400) + ' d ago';
 };
+const agoC = iso => {                       // compact: 4m / 3h / 2d
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 3600) return Math.max(1, Math.round(s/60)) + 'm';
+  if (s < 86400) return Math.round(s/3600) + 'h';
+  return Math.round(s/86400) + 'd';
+};
+const STALE_S = 26 * 3600;
 const sign = n => (n > 0 ? '+' + n : '' + n);
 
+function age(iso) {                          // " · 2h" tag, red if > ~1 day
+  if (!iso) return '';
+  const stale = (Date.now() - new Date(iso)) / 1000 > STALE_S;
+  return ` <span class="upd${stale ? ' stale' : ''}">· ${agoC(iso)}</span>`;
+}
+
 function spreadCell(g) {
-  if (g.spread === null || g.spread === undefined) return '<span class="empty">—</span>';
+  if (g.spread === null || g.spread === undefined)
+    return g.spread_at ? '<span class="empty">— (none posted)</span>' : '<span class="empty">—</span>';
   // convention: positive spread => home favored
   const homeFav = g.spread > 0;
   const favAbbr = homeFav ? (g.home_abbr || 'HOME') : (g.away_abbr || 'AWAY');
   const line = -Math.abs(g.spread);
   const px = homeFav ? g.spread_price_home : g.spread_price_away;
   return `<span class="fav">${favAbbr} ${line}</span>` +
-         (px != null ? ` <span class="px">${sign(px)}</span>` : '');
+         (px != null ? ` <span class="px">${sign(px)}</span>` : '') + age(g.spread_at);
 }
 function totalCell(g) {
-  if (g.total === null || g.total === undefined) return '<span class="empty">—</span>';
+  if (g.total === null || g.total === undefined)
+    return g.total_at ? '<span class="empty">— (none posted)</span>' : '<span class="empty">—</span>';
   const o = g.total_over_price, u = g.total_under_price;
   return `${g.total}` +
     (o != null || u != null
       ? ` <span class="px">o ${o!=null?sign(o):'–'} / u ${u!=null?sign(u):'–'}</span>`
-      : '');
+      : '') + age(g.total_at);
 }
 function mlCell(g) {
   const a = g.moneyline_away, h = g.moneyline_home;
-  if (a == null && h == null) return '<span class="empty">—</span>';
+  if (a == null && h == null)
+    return g.moneyline_at ? '<span class="empty">— (none posted)</span>' : '<span class="empty">—</span>';
   return `<span class="num">${g.away_abbr||'A'} ${a!=null?sign(a):'–'}` +
-         ` / ${g.home_abbr||'H'} ${h!=null?sign(h):'–'}</span>`;
+         ` / ${g.home_abbr||'H'} ${h!=null?sign(h):'–'}</span>` + age(g.moneyline_at);
 }
 
 document.getElementById('rows').innerHTML = GAMES.map(g => `
@@ -187,7 +212,7 @@ document.getElementById('rows').innerHTML = GAMES.map(g => `
     <td class="match">${g.away_abbr||g.away_team} <span class="at">@</span> ${g.home_abbr||g.home_team}</td>
     <td class="num">${spreadCell(g)}</td>
     <td class="num">${totalCell(g)}</td>
-    <td>${mlCell(g)}</td>
+    <td class="num">${mlCell(g)}</td>
   </tr>`).join('');
 
 const f = document.getElementById('fetched');

@@ -1,20 +1,32 @@
 name: pull-lines
 
-# Refreshes data/nfl.json on a schedule so a plain Claude.ai chat can fetch it
-# by raw URL. Also runnable on demand from the Actions tab ("Run workflow") or
-# `gh workflow run pull-lines.yml`.
+# Keeps data/nfl.json fresh so a plain Claude.ai chat can fetch it by raw URL.
 #
-# Budget: cost = 1 credit per market. This run pulls ml + spread = 2 credits;
-# totals are left for manual pulls. The cron frequency IS the budget here — the
-# local .usage.json limiter does not persist between CI runs, so keep it sane.
-#   1x/day x 2 markets (current) ≈ 60/month, leaving ~440 for manual + local
-#   "0 13 * * *" -> daily 13:00 UTC   "0 */12 * * *" -> 2x/day   "0 */6 * * *" -> 4x/day
-# Going over the 500 cap is not billed; the API just 401s until the 1st.
+# --merge means every run patches only the markets it pulled into the existing
+# file; the others keep their last value and *_at stamp. So one file holds all
+# three markets at their own cadences:
+#   * scheduled 1x/day  -> ml + spread   (2 credits/run, ~60/month)
+#   * manual "Run workflow" with markets=total (or ml / spread / all) -> on demand
+#
+# Cost = 1 credit per market. The local .usage.json limiter does NOT persist
+# between CI runs, so the cron line + the markets choice are the real budget.
+# Over the 500/month cap the API just 401s until the 1st — never a charge.
 
 on:
   schedule:
-    - cron: "0 13 * * *"
+    - cron: "0 13 * * *"        # 13:00 UTC daily -> ml + spread
   workflow_dispatch:
+    inputs:
+      markets:
+        description: "Markets to pull (1 credit each; patched into the existing file)"
+        type: choice
+        default: "total"
+        options:
+          - "total"
+          - "ml"
+          - "spread"
+          - "ml,spread"
+          - "all"
 
 concurrency:
   group: pull-lines
@@ -37,9 +49,11 @@ jobs:
       - name: Pull NFL lines
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          # schedule runs have no inputs -> default to ml,spread
+          MARKETS: ${{ github.event.inputs.markets || 'ml,spread' }}
         run: |
-          python fetch_lines.py --sport nfl --days 12 --drop-empty --markets ml,spread \
-            --out data/nfl.json --no-render --force
+          python fetch_lines.py --sport nfl --days 12 --drop-empty --merge \
+            --markets "$MARKETS" --out data/nfl.json --no-render --force
 
       - name: Commit if changed
         run: |
@@ -49,6 +63,8 @@ jobs:
           if git diff --cached --quiet; then
             echo "no changes"
           else
-            git commit -m "data: refresh NFL lines ($(date -u +%FT%TZ))"
+            git commit -m "data: refresh NFL lines — $MARKETS ($(date -u +%FT%TZ))"
             git push
           fi
+        env:
+          MARKETS: ${{ github.event.inputs.markets || 'ml,spread' }}
