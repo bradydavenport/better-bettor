@@ -1,0 +1,54 @@
+name: pull-lines
+
+# Refreshes data/nfl.json on a schedule so a plain Claude.ai chat can fetch it
+# by raw URL. Also runnable on demand from the Actions tab ("Run workflow") or
+# `gh workflow run pull-lines.yml`.
+#
+# Budget: each run spends 3 of the 500 free monthly credits. The cron frequency
+# IS the budget here — the local .usage.json limiter does not persist between CI
+# runs, so keep the schedule sane. 4x/day ≈ 360 credits/month.
+#   */6 hours -> 4/day    */4 -> 6/day    */3 -> 8/day
+# Going over the 500 cap is not billed; the API just 401s until the 1st.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: pull-lines
+  cancel-in-progress: false
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - name: Pull NFL lines
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: |
+          mkdir -p data
+          python fetch_lines.py --sport nfl --days 12 --drop-empty \
+            --out data/nfl.json --no-render --force
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/nfl.json)" ]; then
+            git add data/nfl.json
+            git commit -m "data: refresh NFL lines ($(date -u +%FT%TZ))"
+            git push
+          else
+            echo "no line changes"
+          fi
