@@ -14,6 +14,8 @@ wrapper and dumps the untouched upstream response.
     {
       "_meta": {
         "source": "theoddsapi", "book": "pinnacle", "sport": "nfl",
+        "pulled_markets": ["h2h", "spreads"],       # what THIS run fetched
+        "markets_present": ["h2h", "spreads", "totals"],  # what has a line in the file
         "fetched_at": "2026-09-07T17:00:00Z", "game_count": 16,
         "spread_convention": "`spread` is the HOME line; POSITIVE = home favored ...",
         "usage": { "credits_used": 138, "credits_remaining": 362, "monthly_cap": 500, ... }
@@ -23,16 +25,21 @@ wrapper and dumps the untouched upstream response.
           "game_id": "<source id>",
           "commence_time": "2026-09-07T17:00:00Z",
           "home_team": "Detroit Lions", "away_team": "Green Bay Packers",
-          "home_abbr": "DET", "away_abbr": "GB",
-          "book": "pinnacle",
-          "spread": -2.5,            # home line; positive => home favored
-          "spread_price_home": -110, "spread_price_away": -110,
-          "total": 48.5, "total_over_price": -105, "total_under_price": -115,
+          "home_abbr": "DET", "away_abbr": "GB", "book": "pinnacle",
           "moneyline_home": -140, "moneyline_away": 120,
-          "last_update": "2026-09-05T12:00:00Z", "fetched_at": "2026-09-05T12:01:03Z"
+          "moneyline_at": "2026-09-07T13:00:04Z",
+          "spread": -2.5, "spread_price_home": -110, "spread_price_away": -110,
+          "spread_at": "2026-09-07T13:00:04Z",
+          "total": 48.5, "total_over_price": -105, "total_under_price": -115,
+          "total_at": "2026-09-06T22:11:40Z",     # older — pulled in a separate run
+          "book_last_update": "2026-09-07T12:58:00Z"
         }
       ]
     }
+
+Each market carries its own *_at stamp (when it was last pulled). With --merge,
+a run that pulls only some markets leaves the others — value and stamp —
+untouched, so one file accumulates all three at their own refresh cadences.
 
 When --out is a path, a sibling usage.json (just the _meta.usage block) is
 written next to it as a standalone, always-current credit counter.
@@ -40,7 +47,7 @@ written next to it as a standalone, always-current credit counter.
 Usage:
     python fetch_lines.py --sport nfl --out lines.json               # all 3 markets, 3 credits
     python fetch_lines.py --sport nfl --markets spread --out s.json   # spread only, 1 credit
-    python fetch_lines.py --sport nfl --markets ml,total --out x.json # two markets, 2 credits
+    python fetch_lines.py --sport nfl --markets total --merge --out lines.json  # patch totals in
     python fetch_lines.py --sport nfl --drop-empty --out lines.json   # only priced games
     python fetch_lines.py --sport nfl --days 0 --raw                  # whole season, raw JSON
     python fetch_lines.py --status                                    # show credit counter
@@ -113,16 +120,41 @@ def parse_markets(spec):
     return ",".join(m for m in CANON_MARKETS if m in picked)
 
 
-def _has_requested_data(g, markets):
-    """True if the game carries a value for at least one requested market."""
-    if "spreads" in markets and g.get("spread") is not None:
-        return True
-    if "totals" in markets and g.get("total") is not None:
-        return True
-    if "h2h" in markets and (g.get("moneyline_home") is not None
-                             or g.get("moneyline_away") is not None):
-        return True
-    return False
+# market -> (value/price fields ..., timestamp field). The first entry is the
+# "does this market have a line" field.
+MARKET_FIELDS = {
+    "h2h":     ("moneyline_home", "moneyline_away", "moneyline_at"),
+    "spreads": ("spread", "spread_price_home", "spread_price_away", "spread_at"),
+    "totals":  ("total", "total_over_price", "total_under_price", "total_at"),
+}
+
+
+def _has_any_market(g):
+    """True if the game carries a line for at least one market."""
+    return any(g.get(fields[0]) is not None for fields in MARKET_FIELDS.values())
+
+
+def markets_present(games):
+    """Canonical-ordered list of markets that have a line somewhere in `games`."""
+    return [m for m in CANON_MARKETS
+            if any(g.get(MARKET_FIELDS[m][0]) is not None for g in games)]
+
+
+def merge_forward(old_games, new_games, pulled):
+    """Carry each market NOT in `pulled` (fields + its *_at stamp) from the
+    matching old game (by game_id) into the new games. New pull wins for the
+    markets it covers; untouched markets keep their previous value and stamp."""
+    old_by_id = {g.get("game_id"): g for g in old_games}
+    carry = [m for m in CANON_MARKETS if m not in pulled]
+    for g in new_games:
+        prev = old_by_id.get(g.get("game_id"))
+        if not prev:
+            continue
+        for m in carry:
+            for f in MARKET_FIELDS[m]:
+                if prev.get(f) is not None:
+                    g[f] = prev[f]
+    return new_games
 
 # NFL full name -> abbreviation (used only for convenience fields; unknown -> None)
 NFL_ABBR = {
@@ -337,6 +369,8 @@ class TheOddsAPIAdapter:
         return self._get(f"/sports/{api_key}/odds", **params)
 
     def normalize(self, sport, raw):
+        now = _now_iso()
+        pulled = self.markets.split(",")
         games = []
         for ev in raw:
             home = ev.get("home_team")
@@ -352,17 +386,17 @@ class TheOddsAPIAdapter:
                 "home_abbr": _abbr(sport, home),
                 "away_abbr": _abbr(sport, away),
                 "book": self.book,
-                "spread": None,
-                "spread_price_home": None,
-                "spread_price_away": None,
-                "total": None,
-                "total_over_price": None,
-                "total_under_price": None,
-                "moneyline_home": None,
-                "moneyline_away": None,
-                "last_update": book.get("last_update") if book else None,
-                "fetched_at": _now_iso(),
+                "moneyline_home": None, "moneyline_away": None, "moneyline_at": None,
+                "spread": None, "spread_price_home": None, "spread_price_away": None,
+                "spread_at": None,
+                "total": None, "total_over_price": None, "total_under_price": None,
+                "total_at": None,
+                "book_last_update": book.get("last_update") if book else None,
             }
+            # stamp every market we asked for on this pull, line or not — so the
+            # file records "checked totals at T, none posted" vs "never checked"
+            for m in pulled:
+                g[MARKET_FIELDS[m][-1]] = now
 
             if book:
                 for mkt in book.get("markets", []):
@@ -457,16 +491,12 @@ class SportsGameOddsAdapter:
                 "home_abbr": _abbr(sport, home),
                 "away_abbr": _abbr(sport, away),
                 "book": self.book,
-                "spread": None,
-                "spread_price_home": None,
-                "spread_price_away": None,
-                "total": None,
-                "total_over_price": None,
-                "total_under_price": None,
-                "moneyline_home": None,
-                "moneyline_away": None,
-                "last_update": None,
-                "fetched_at": _now_iso(),
+                "moneyline_home": None, "moneyline_away": None, "moneyline_at": None,
+                "spread": None, "spread_price_home": None, "spread_price_away": None,
+                "spread_at": None,
+                "total": None, "total_over_price": None, "total_under_price": None,
+                "total_at": None,
+                "book_last_update": None,
                 "note": "sportsgameodds adapter is untested — verify against --raw",
             }
             # Left deliberately shallow: the odds object keys vary by plan and
@@ -503,7 +533,10 @@ def main():
                          "or all (default). Cost = 1 credit per market, so "
                          "`--markets spread` is a 1-credit pull.")
     ap.add_argument("--drop-empty", action="store_true",
-                    help="omit games the book hasn't priced for any requested market")
+                    help="omit games with no line for any market (after any --merge)")
+    ap.add_argument("--merge", action="store_true",
+                    help="merge into an existing --out file: markets not pulled "
+                         "this run keep their previous value and *_at timestamp")
     ap.add_argument("--daily-limit", type=int, default=DEFAULT_DAILY_LIMIT,
                     help=f"max credits to spend per day (default: {DEFAULT_DAILY_LIMIT}"
                          f", or $ODDS_DAILY_LIMIT). 1 credit per market per pull.")
@@ -552,8 +585,23 @@ def main():
         out_obj = raw
     else:
         games = adapter.normalize(args.sport, raw)
+
+        if args.merge and args.out:
+            from pathlib import Path
+            try:
+                prev = json.loads(Path(args.out).read_text())
+                old_games = prev["games"] if isinstance(prev, dict) else prev
+                games = merge_forward(old_games, games, markets.split(","))
+                print(f"[ok] merged into existing {args.out} "
+                      f"(carried forward: "
+                      f"{', '.join(m for m in CANON_MARKETS if m not in markets) or 'nothing'})",
+                      file=sys.stderr)
+            except (FileNotFoundError, ValueError, KeyError, TypeError):
+                print(f"[note] --merge: no usable {args.out} to merge into; writing fresh",
+                      file=sys.stderr)
+
         if args.drop_empty:
-            games = [g for g in games if _has_requested_data(g, markets)]
+            games = [g for g in games if _has_any_market(g)]
         games.sort(key=lambda g: g.get("commence_time") or "")
         print(f"[ok] {len(games)} games — {args.sport} @ {adapter.book}"
               + (f" (next {args.days}d)" if args.days else ""),
@@ -562,7 +610,8 @@ def main():
             "source": args.source,
             "book": adapter.book,
             "sport": args.sport,
-            "markets": markets.split(","),
+            "pulled_markets": markets.split(","),      # what THIS run fetched
+            "markets_present": markets_present(games),  # what has a line in the file
             "fetched_at": _now_iso(),
             "game_count": len(games),
             "window_days": args.days or None,
@@ -570,8 +619,9 @@ def main():
                 "`spread` is the HOME team's line; POSITIVE = home favored "
                 "(spread 3.5 -> home favored by 3.5, away is +3.5). "
                 "spread_price_*, moneyline_* and *_price_* are American odds. "
-                "Times are UTC ISO-8601. null = the book has not posted that "
-                "market yet."
+                "Times are UTC ISO-8601. Each market has its own *_at stamp = "
+                "when it was last pulled; null there = not pulled yet, null on a "
+                "value = pulled but the book had no line."
             ),
         }
         if metered:
