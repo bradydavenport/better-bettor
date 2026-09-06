@@ -29,16 +29,26 @@ Writes `lines.json` and (unless `--no-render`) `lines.csv` + `lines.html`.
 | flag | meaning |
 |---|---|
 | `--sport` | `nfl` (default), `ncaaf`, `nba`, `ncaab`, `mlb`, `nhl` |
+| `--markets` | `ml`, `spread`, `total` (comma-sep) or `all` (default). 1 credit per market. |
 | `--days N` | only games starting within N days (default 8; use 12 for a full NFL week incl. MNF) |
-| `--drop-empty` | skip games the book hasn't priced yet |
+| `--drop-empty` | skip games the book hasn't priced for any requested market |
 | `--source` | `theoddsapi` (default) or `sportsgameodds` (paid, carries Circa; adapter is a stub) |
 | `--book` | override the bookmaker key |
 | `--raw` | dump the untouched API response |
 
+```bash
+python fetch_lines.py --sport nfl --markets spread --out spreads.json   # 1 credit
+python fetch_lines.py --sport nfl --markets ml,total --out ml_ou.json   # 2 credits
+```
+
+Aliases: `moneyline`/`h2h`/`money` → ml, `spreads`/`ats` → spread,
+`totals`/`ou` → total. Unrequested markets come back `null`; `_meta.markets`
+records what was pulled.
+
 ### Credits / rate limiting
 
-`cost = markets × regions`, so the default pull is **3 credits**. A local counter
-in `.usage.json` caps spend:
+`cost = markets × regions` (one region), so an all-markets pull is **3 credits**
+and `--markets spread` is **1**. A local counter in `.usage.json` caps spend:
 
 ```bash
 python fetch_lines.py --status              # today / month / buffer, no API call
@@ -57,6 +67,7 @@ Self-describing object — the consumer needs nothing but the file:
 {
   "_meta": {
     "source": "theoddsapi", "book": "pinnacle", "sport": "nfl",
+    "markets": ["h2h", "spreads", "totals"],
     "fetched_at": "2026-09-13T12:00:00Z", "game_count": 16, "window_days": 12,
     "spread_convention": "`spread` is the HOME line; POSITIVE = home favored ...",
     "usage": { "credits_used": 138, "credits_remaining": 362, "monthly_cap": 500,

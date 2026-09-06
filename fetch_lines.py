@@ -38,17 +38,21 @@ When --out is a path, a sibling usage.json (just the _meta.usage block) is
 written next to it as a standalone, always-current credit counter.
 
 Usage:
-    python fetch_lines.py --sport nfl --out lines.json            # next 8 days
-    python fetch_lines.py --sport nfl --drop-empty --out lines.json  # only priced games
-    python fetch_lines.py --sport nfl --days 0 --raw              # whole season, raw JSON
-    python fetch_lines.py --status                               # show credit counter
-    python fetch_lines.py --sport nfl --force                    # override daily limit
+    python fetch_lines.py --sport nfl --out lines.json               # all 3 markets, 3 credits
+    python fetch_lines.py --sport nfl --markets spread --out s.json   # spread only, 1 credit
+    python fetch_lines.py --sport nfl --markets ml,total --out x.json # two markets, 2 credits
+    python fetch_lines.py --sport nfl --drop-empty --out lines.json   # only priced games
+    python fetch_lines.py --sport nfl --days 0 --raw                  # whole season, raw JSON
+    python fetch_lines.py --status                                    # show credit counter
 
-Quota: The Odds API free tier = 500 credits / calendar month. cost = markets x
-regions, so our default pull is 3 credits. Going over is NOT billed — the API
-just 401s until the 1st. A local limiter (see Usage class) caps spend at 15
-credits/day = 450/month, with a 50-credit buffer reachable via --force.
-Counters persist in .usage.json.
+Markets: --markets takes ml / spread / total (aliases: moneyline, h2h, spreads,
+ats, totals, ou), comma-separated, or `all`. Cost is 1 credit per market x 1
+region, so fewer markets = a cheaper pull.
+
+Quota: The Odds API free tier = 500 credits / calendar month. Going over is NOT
+billed — the API just 401s until the 1st. A local limiter (see Usage class)
+caps spend at 15 credits/day, with a buffer reachable via --force. Counters
+persist in .usage.json; the API's own tally comes back in response headers.
 
 Env:
     ODDS_API_KEY       The Odds API key (https://the-odds-api.com/ , free tier)
@@ -80,6 +84,45 @@ SPORT_KEYS = {
     "mlb":   ("baseball_mlb",           "MLB"),
     "nhl":   ("icehockey_nhl",          "NHL"),
 }
+
+# The Odds API bills 1 credit per market per region. We use one region, so the
+# per-pull cost == number of markets requested. Friendly names -> API keys:
+CANON_MARKETS = ("h2h", "spreads", "totals")
+MARKET_ALIASES = {
+    "ml": "h2h", "moneyline": "h2h", "money": "h2h", "h2h": "h2h",
+    "spread": "spreads", "spreads": "spreads", "ats": "spreads",
+    "total": "totals", "totals": "totals", "ou": "totals", "o/u": "totals",
+    "all": "h2h,spreads,totals",
+}
+
+
+def parse_markets(spec):
+    """'spread,ml' -> 'h2h,spreads' (canonical order, deduped). 'all' -> all 3."""
+    picked = []
+    for tok in spec.lower().replace(" ", "").split(","):
+        if not tok:
+            continue
+        mapped = MARKET_ALIASES.get(tok)
+        if mapped is None:
+            sys.exit(f"unknown market '{tok}' — use ml, spread, total (comma-sep) or all")
+        for k in mapped.split(","):
+            if k not in picked:
+                picked.append(k)
+    if not picked:
+        sys.exit("--markets resolved to nothing")
+    return ",".join(m for m in CANON_MARKETS if m in picked)
+
+
+def _has_requested_data(g, markets):
+    """True if the game carries a value for at least one requested market."""
+    if "spreads" in markets and g.get("spread") is not None:
+        return True
+    if "totals" in markets and g.get("total") is not None:
+        return True
+    if "h2h" in markets and (g.get("moneyline_home") is not None
+                             or g.get("moneyline_away") is not None):
+        return True
+    return False
 
 # NFL full name -> abbreviation (used only for convenience fields; unknown -> None)
 NFL_ABBR = {
@@ -211,8 +254,8 @@ class Usage:
             "updated_at": _now_iso(),
             "note": ("The Odds API free tier = 500 credits per calendar month, "
                      "resets on the 1st. Exceeding it returns HTTP 401 until the "
-                     "reset — never a charge. One pull (h2h+spreads+totals) = 3 "
-                     "credits."),
+                     "reset — never a charge. Cost = 1 credit per market per pull "
+                     "(all 3 markets = 3, --markets spread = 1)."),
         }
 
     def render(self, daily_limit):
@@ -250,13 +293,14 @@ class TheOddsAPIAdapter:
     BASE = "https://api.the-odds-api.com/v4"
     MARKETS = "h2h,spreads,totals"
 
-    def __init__(self, api_key, book="pinnacle"):
+    def __init__(self, api_key, book="pinnacle", markets=None):
         if not api_key:
             sys.exit("ODDS_API_KEY not set (put it in .env or export it).")
         self.api_key = api_key
         self.book = book
+        self.markets = markets or self.MARKETS
         # cost = (# markets) x (# regions); we use one region
-        self.estimated_cost = len(self.MARKETS.split(","))
+        self.estimated_cost = len(self.markets.split(","))
         self.last_cost = None
         self.api_remaining = None
         self.api_used = None
@@ -283,7 +327,7 @@ class TheOddsAPIAdapter:
         params = dict(
             bookmakers=self.book,
             regions="eu",  # Pinnacle lives here; ignored when `bookmakers` is set
-            markets=self.MARKETS,
+            markets=self.markets,
             oddsFormat="american",
         )
         if days:
@@ -363,11 +407,12 @@ class SportsGameOddsAdapter:
 
     BASE = "https://api.sportsgameodds.com/v2"
 
-    def __init__(self, api_key, book="circa"):
+    def __init__(self, api_key, book="circa", markets=None):
         if not api_key:
             sys.exit("SGO_API_KEY not set (put it in .env or export it).")
         self.api_key = api_key
         self.book = book
+        self.markets = markets or "h2h,spreads,totals"  # kept for parity; not billed per-market
         # SGO isn't credit-metered the same way; treat a call as 1 unit locally
         self.estimated_cost = 1
         self.last_cost = 1
@@ -453,11 +498,15 @@ def main():
     ap.add_argument("--days", type=int, default=8,
                     help="only games starting within N days (0 = no limit; "
                          "default: 8, i.e. the upcoming slate)")
+    ap.add_argument("--markets", default="all",
+                    help="markets to pull: any of ml, spread, total (comma-sep) "
+                         "or all (default). Cost = 1 credit per market, so "
+                         "`--markets spread` is a 1-credit pull.")
     ap.add_argument("--drop-empty", action="store_true",
-                    help="omit games that have no spread from this book yet")
+                    help="omit games the book hasn't priced for any requested market")
     ap.add_argument("--daily-limit", type=int, default=DEFAULT_DAILY_LIMIT,
                     help=f"max credits to spend per day (default: {DEFAULT_DAILY_LIMIT}"
-                         f", or $ODDS_DAILY_LIMIT). 1 pull = 3 credits.")
+                         f", or $ODDS_DAILY_LIMIT). 1 credit per market per pull.")
     ap.add_argument("--force", action="store_true",
                     help="ignore the daily limit for this run (dips into the "
                          "monthly buffer; still hard-stops at the 500 cap)")
@@ -477,8 +526,10 @@ def main():
         print(usage.render(args.daily_limit))
         return
 
+    markets = parse_markets(args.markets)
+
     cls, env_var, default_book = ADAPTERS[args.source]
-    adapter = cls(os.getenv(env_var), book=args.book or default_book)
+    adapter = cls(os.getenv(env_var), book=args.book or default_book, markets=markets)
 
     metered = args.source == "theoddsapi"
     if metered:
@@ -502,7 +553,7 @@ def main():
     else:
         games = adapter.normalize(args.sport, raw)
         if args.drop_empty:
-            games = [g for g in games if g.get("spread") is not None]
+            games = [g for g in games if _has_requested_data(g, markets)]
         games.sort(key=lambda g: g.get("commence_time") or "")
         print(f"[ok] {len(games)} games — {args.sport} @ {adapter.book}"
               + (f" (next {args.days}d)" if args.days else ""),
@@ -511,6 +562,7 @@ def main():
             "source": args.source,
             "book": adapter.book,
             "sport": args.sport,
+            "markets": markets.split(","),
             "fetched_at": _now_iso(),
             "game_count": len(games),
             "window_days": args.days or None,
