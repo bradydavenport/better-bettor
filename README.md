@@ -51,35 +51,61 @@ python fetch_lines.py --sport nfl --force   # override the daily cap for one run
 
 ## Output shape
 
-One object per game. **`spread` is the home line, positive = home favored**
-(`"spread": 3.5` ⇒ home favored by 3.5). This is non-standard — say so when
-handing the file to another agent.
+Self-describing object — the consumer needs nothing but the file:
 
 ```json
 {
-  "commence_time": "2026-09-13T17:00:00Z",
-  "home_team": "Pittsburgh Steelers", "away_team": "Atlanta Falcons",
-  "home_abbr": "PIT", "away_abbr": "ATL",
-  "book": "pinnacle",
-  "spread": 3.0, "spread_price_home": -121, "spread_price_away": 107,
-  "total": 42.5, "total_over_price": -105, "total_under_price": -111,
-  "moneyline_home": -179, "moneyline_away": 157,
-  "last_update": "2026-09-05T22:57:23Z", "fetched_at": "2026-09-05T22:57:23Z"
+  "_meta": {
+    "source": "theoddsapi", "book": "pinnacle", "sport": "nfl",
+    "fetched_at": "2026-09-13T12:00:00Z", "game_count": 16, "window_days": 12,
+    "spread_convention": "`spread` is the HOME line; POSITIVE = home favored ...",
+    "usage": { "credits_used": 138, "credits_remaining": 362, "monthly_cap": 500,
+               "pulls_left_est": 120, "month": "2026-09", "updated_at": "..." }
+  },
+  "games": [
+    {
+      "commence_time": "2026-09-13T17:00:00Z",
+      "home_team": "Pittsburgh Steelers", "away_team": "Atlanta Falcons",
+      "home_abbr": "PIT", "away_abbr": "ATL", "book": "pinnacle",
+      "spread": 3.0, "spread_price_home": -121, "spread_price_away": 107,
+      "total": 42.5, "total_over_price": -105, "total_under_price": -111,
+      "moneyline_home": -179, "moneyline_away": 157,
+      "last_update": "2026-09-05T22:57:23Z", "fetched_at": "2026-09-05T22:57:23Z"
+    }
+  ]
 }
 ```
 
-`lines.csv` is the same fields and sign convention, ~70% fewer bytes — use it
-for large multi-week dumps; otherwise `lines.json` is small and self-describing.
+**`spread` is the home line, positive = home favored** (`3.0` ⇒ home favored by
+3). Non-standard, but `_meta.spread_convention` states it in-band so you don't
+have to. `--raw` skips the wrapper entirely.
+
+`lines.csv` is `games` only (same fields / sign), ~70% fewer bytes — for large
+multi-week dumps.
+
+## Credit counter — `data/usage.json`
+
+Every `--out` run also writes a sibling `usage.json` (the `_meta.usage` block on
+its own). The scheduled workflow commits it, so there's always a current,
+fetchable record of where the month stands:
+
+```
+https://raw.githubusercontent.com/<you>/better-bettor/main/data/usage.json
+```
+
+Numbers come from the API response headers, so they count **every** call on the
+account — local runs and CI alike. `python fetch_lines.py --status` shows the
+same thing locally (plus the `--force` buffer) without spending a call.
 
 ## View
 
 `lines.html` is a standalone viewer — double-click to open, no server. Local
-kickoff times, freshness stamp, favorite side highlighted, light/dark aware.
-Regenerate any time without spending a pull:
+kickoff times, freshness stamp, credit counter, favorite side highlighted,
+light/dark aware. Regenerate any time without spending a pull:
 
 ```bash
 python render.py                 # lines.json -> lines.csv + lines.html
-python render.py week1.json      # any normalized file
+python render.py data/nfl.json   # wrapped or bare-list file, either works
 ```
 
 ## Getting lines into a plain Claude.ai chat
@@ -100,15 +126,28 @@ credits/month) and commits `data/nfl.json`. To wire it up:
 3. Optionally trigger a first run now: Actions tab → **pull-lines** → *Run
    workflow*, or `gh workflow run pull-lines.yml`.
 
-Then in any chat:
+### The chat command
 
-> Fetch `https://raw.githubusercontent.com/<you>/better-bettor/main/data/nfl.json`
-> and use it as the current NFL lines. `spread` is the home line, positive means
-> home favored.
+The file explains its own fields (`_meta`), so the whole prompt is:
 
-Adjust cadence by editing the `cron:` line in the workflow. Note: the
-`.usage.json` limiter does **not** persist between CI runs, so the schedule
-frequency is the real budget — keep it sane.
+> Fetch `https://raw.githubusercontent.com/<you>/better-bettor/main/data/nfl.json` — use `.games`.
+
+**Make it a one-worder:** put that URL in a Claude
+[Project](https://claude.ai/projects)'s custom instructions —
+
+> When I ask for "lines", fetch `https://raw.githubusercontent.com/<you>/better-bettor/main/data/nfl.json` and work from `.games`; `_meta` documents the fields.
+
+— then any chat in that project just needs **"lines"**. Raw GitHub caches for
+~5 min; if you just ran the workflow, add `?t=NNN` (any changing number) to
+bypass it.
+
+### Cron
+
+Runs 4×/day (`0 */6 * * *`, ~360 credits/month). `data/nfl.json` +
+`data/usage.json` are re-committed each run they change — that's the durable
+counter, and doubles as a heartbeat. The `.usage.json` limiter does **not**
+persist between CI runs, so the `cron:` frequency is the real budget — keep the
+math under 500 (over-cap just 401s, no charge).
 
 ### Keeping the code private instead
 

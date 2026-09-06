@@ -6,27 +6,36 @@ native apps). This fetches from The Odds API instead, defaulting to Pinnacle as
 the sharp reference book. The adapter layer is built so a paid Circa source
 (SportsGameOdds) can be swapped in later without touching the output shape.
 
-Normalized output (one dict per game), sign convention: positive spread = home favored.
+Output is a self-describing object: { "_meta": {...}, "games": [ {...}, ... ] }.
+_meta carries the spread convention, field glossary and the live credit usage,
+so a consumer only needs the file — no side instructions. --raw skips the
+wrapper and dumps the untouched upstream response.
 
     {
-      "game_id":            "<source id>",
-      "commence_time":      "2025-09-07T17:00:00Z",
-      "home_team":          "Detroit Lions",
-      "away_team":          "Green Bay Packers",
-      "home_abbr":          "DET",
-      "away_abbr":          "GB",
-      "book":               "pinnacle",
-      "spread":             -2.5,     # home line; positive => home favored
-      "spread_price_home":  -110,
-      "spread_price_away":  -110,
-      "total":              48.5,
-      "total_over_price":   -105,
-      "total_under_price":  -115,
-      "moneyline_home":     -140,
-      "moneyline_away":     +120,
-      "last_update":        "2025-09-05T12:00:00Z",   # book's timestamp, if given
-      "fetched_at":         "2025-09-05T12:01:03Z"
+      "_meta": {
+        "source": "theoddsapi", "book": "pinnacle", "sport": "nfl",
+        "fetched_at": "2026-09-07T17:00:00Z", "game_count": 16,
+        "spread_convention": "`spread` is the HOME line; POSITIVE = home favored ...",
+        "usage": { "credits_used": 138, "credits_remaining": 362, "monthly_cap": 500, ... }
+      },
+      "games": [
+        {
+          "game_id": "<source id>",
+          "commence_time": "2026-09-07T17:00:00Z",
+          "home_team": "Detroit Lions", "away_team": "Green Bay Packers",
+          "home_abbr": "DET", "away_abbr": "GB",
+          "book": "pinnacle",
+          "spread": -2.5,            # home line; positive => home favored
+          "spread_price_home": -110, "spread_price_away": -110,
+          "total": 48.5, "total_over_price": -105, "total_under_price": -115,
+          "moneyline_home": -140, "moneyline_away": 120,
+          "last_update": "2026-09-05T12:00:00Z", "fetched_at": "2026-09-05T12:01:03Z"
+        }
+      ]
     }
+
+When --out is a path, a sibling usage.json (just the _meta.usage block) is
+written next to it as a standalone, always-current credit counter.
 
 Usage:
     python fetch_lines.py --sport nfl --out lines.json            # next 8 days
@@ -177,6 +186,34 @@ class Usage:
         d["last_call"] = _now_iso()
         d["last_cost"] = cost
         self.save()
+
+    def snapshot(self, daily_limit):
+        """Public, durable view of the counter — written to data/usage.json and
+        embedded in each lines file's _meta. Numbers come from the API response
+        headers, so they count every call on the account (local runs + CI)."""
+        d = self.data
+        used = d["api_used"] if d["api_used"] is not None else d["month_credits"]
+        remaining = (d["api_remaining"] if d["api_remaining"] is not None
+                     else max(MONTHLY_CAP - used, 0))
+        return {
+            "month": d["month"],
+            "credits_used": used,
+            "credits_remaining": remaining,
+            "monthly_cap": MONTHLY_CAP,
+            "pct_used": round(100 * used / MONTHLY_CAP, 1) if MONTHLY_CAP else None,
+            "pulls_left_est": remaining // 3,
+            "today": d["day"],
+            "today_credits": d["day_credits"],
+            "daily_limit": daily_limit,
+            "buffer_used": d["month_force_credits"],
+            "last_call": d["last_call"],
+            "last_cost": d["last_cost"],
+            "updated_at": _now_iso(),
+            "note": ("The Odds API free tier = 500 credits per calendar month, "
+                     "resets on the 1st. Exceeding it returns HTTP 401 until the "
+                     "reset — never a charge. One pull (h2h+spreads+totals) = 3 "
+                     "credits."),
+        }
 
     def render(self, daily_limit):
         d = self.data
@@ -461,26 +498,51 @@ def main():
               file=sys.stderr)
 
     if args.raw:
-        payload = raw
+        out_obj = raw
     else:
-        payload = adapter.normalize(args.sport, raw)
+        games = adapter.normalize(args.sport, raw)
         if args.drop_empty:
-            payload = [g for g in payload if g.get("spread") is not None]
-        payload.sort(key=lambda g: g.get("commence_time") or "")
-        print(f"[ok] {len(payload)} games — {args.sport} @ {adapter.book}"
+            games = [g for g in games if g.get("spread") is not None]
+        games.sort(key=lambda g: g.get("commence_time") or "")
+        print(f"[ok] {len(games)} games — {args.sport} @ {adapter.book}"
               + (f" (next {args.days}d)" if args.days else ""),
               file=sys.stderr)
+        meta = {
+            "source": args.source,
+            "book": adapter.book,
+            "sport": args.sport,
+            "fetched_at": _now_iso(),
+            "game_count": len(games),
+            "window_days": args.days or None,
+            "spread_convention": (
+                "`spread` is the HOME team's line; POSITIVE = home favored "
+                "(spread 3.5 -> home favored by 3.5, away is +3.5). "
+                "spread_price_*, moneyline_* and *_price_* are American odds. "
+                "Times are UTC ISO-8601. null = the book has not posted that "
+                "market yet."
+            ),
+        }
+        if metered:
+            meta["usage"] = usage.snapshot(args.daily_limit)
+        out_obj = {"_meta": meta, "games": games}
 
-    text = json.dumps(payload, indent=2)
+    text = json.dumps(out_obj, indent=2)
     if args.out:
-        with open(args.out, "w") as f:
-            f.write(text + "\n")
-        print(f"[ok] wrote {args.out}", file=sys.stderr)
+        from pathlib import Path
+        p = Path(args.out)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text + "\n")
+        print(f"[ok] wrote {p}", file=sys.stderr)
+
+        if metered:
+            up = p.parent / "usage.json"
+            up.write_text(json.dumps(usage.snapshot(args.daily_limit), indent=2) + "\n")
+            print(f"[ok] wrote {up}", file=sys.stderr)
+
         if not args.raw and not args.no_render:
             import render
-            from pathlib import Path
-            p = Path(args.out)
-            csv_path, html_path = render.render(payload, stem=p.stem, outdir=p.parent)
+            csv_path, html_path = render.render(
+                out_obj["games"], meta=out_obj["_meta"], stem=p.stem, outdir=p.parent)
             print(f"[ok] wrote {csv_path}  +  {html_path}", file=sys.stderr)
     else:
         print(text)

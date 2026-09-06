@@ -10,10 +10,9 @@ No network. Safe to run any time; it only reads the JSON file.
 fetch_lines.py calls this automatically after a successful --out write
 (disable with --no-render).
 
-Handoff note: the canonical file for another agent is still lines.json — it is
-tiny (~9 KB for a full NFL week) and self-describing. lines.csv is the same
-data, same field names and sign convention, ~40% fewer bytes; prefer it only
-if you are piping a large multi-week / multi-sport dump.
+Accepts either the wrapped shape { "_meta": {...}, "games": [...] } or a bare
+list of games. lines.csv is the games only (same field names / sign convention),
+~70% fewer bytes than the JSON.
 """
 
 import csv
@@ -37,15 +36,23 @@ def write_csv(games, path):
             w.writerow(g)
 
 
-def write_html(games, path):
+def write_html(games, path, meta=None):
     # Data is embedded; all formatting (local time, "x ago", favorite side)
     # happens in the browser so the file is fully self-contained.
+    meta = meta or {}
     payload = json.dumps(games, separators=(",", ":"))
-    book = (games[0].get("book") if games else "—") or "—"
-    fetched = games[0].get("fetched_at", "") if games else ""
+    book = meta.get("book") or (games[0].get("book") if games else "—") or "—"
+    fetched = meta.get("fetched_at") or (games[0].get("fetched_at", "") if games else "")
+    usage = meta.get("usage") or {}
+    if usage:
+        credits = (f"{usage.get('credits_used', '?')} / {usage.get('monthly_cap', 500)} "
+                   f"credits this month · ~{usage.get('pulls_left_est', '?')} pulls left")
+    else:
+        credits = ""
     html = _TEMPLATE.replace("__BOOK__", _esc(book)) \
                     .replace("__FETCHED__", _esc(fetched)) \
                     .replace("__COUNT__", str(len(games))) \
+                    .replace("__CREDITS__", _esc(credits)) \
                     .replace("__DATA__", payload)
     Path(path).write_text(html, encoding="utf-8")
 
@@ -55,11 +62,11 @@ def _esc(s):
             .replace(">", "&gt;").replace('"', "&quot;"))
 
 
-def render(games, stem="lines", outdir="."):
+def render(games, meta=None, stem="lines", outdir="."):
     out = Path(outdir)
     csv_path, html_path = out / f"{stem}.csv", out / f"{stem}.html"
     write_csv(games, csv_path)
-    write_html(games, html_path)
+    write_html(games, html_path, meta=meta)
     return csv_path, html_path
 
 
@@ -89,6 +96,8 @@ _TEMPLATE = r"""<!doctype html>
   h1 { font-size: 20px; margin: 0 0 2px; }
   .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
   .sub b { color: var(--fg); font-weight: 600; }
+  #credits { display: block; margin-top: 3px; }
+  #credits:empty { display: none; }
   .scroll { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; }
   td.match, td.day, td.num { white-space: nowrap; }
@@ -113,6 +122,7 @@ _TEMPLATE = r"""<!doctype html>
   <div class="sub">
     <b>__COUNT__</b> games &nbsp;·&nbsp; fetched <b id="fetched">__FETCHED__</b>
     <span id="ago"></span>
+    <span id="credits">__CREDITS__</span>
   </div>
   <div class="scroll">
   <table>
@@ -125,7 +135,8 @@ _TEMPLATE = r"""<!doctype html>
   </table>
   </div>
   <footer>
-    Spread shown as the favorite's number. Source of truth: <code>lines.json</code>.
+    Spread shown as the favorite's number. Full data + field notes in the
+    source <code>.json</code> (<code>_meta</code> block).
   </footer>
 </div>
 <script>
@@ -191,14 +202,26 @@ if (f.textContent.trim()) {
 """
 
 
+def load(src):
+    """Return (games, meta) from either the wrapped object or a bare list."""
+    data = json.loads(Path(src).read_text())
+    if isinstance(data, dict) and "games" in data:
+        return data["games"], data.get("_meta", {})
+    if isinstance(data, list):
+        return data, {}
+    raise ValueError("not a lines file (wrapped object or list expected; "
+                     "did you pass a --raw dump?)")
+
+
 def main():
     src = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("lines.json")
     if not src.exists():
         sys.exit(f"{src} not found — run fetch_lines.py first, or pass a path.")
-    games = json.loads(src.read_text())
-    if not isinstance(games, list):
-        sys.exit(f"{src} is not a normalized lines array (did you pass a --raw dump?).")
-    csv_path, html_path = render(games, stem=src.stem, outdir=src.parent)
+    try:
+        games, meta = load(src)
+    except ValueError as e:
+        sys.exit(f"{src}: {e}")
+    csv_path, html_path = render(games, meta=meta, stem=src.stem, outdir=src.parent)
     print(f"[ok] {len(games)} games -> {csv_path}  +  {html_path}")
 
 

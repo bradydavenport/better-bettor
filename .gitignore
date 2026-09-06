@@ -7,11 +7,17 @@ __pycache__/
 .venv/
 venv/
 
-# fetched data + generated views
+# local fetched data + generated views (repo-root working copies)
 lines.json
 lines.csv
 lines.html
 *.raw.json
 
-# local usage counter
+# derived views under data/ — the .json files there ARE tracked (the CI feed
+# + the durable usage counter); the csv/html are regenerated locally
+data/*.csv
+data/*.html
+
+# local private credit counter (day tally, --force buffer). The public,
+# durable one is data/usage.json.
 .usage.json
