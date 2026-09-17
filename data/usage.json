@@ -1,16 +1,16 @@
 {
   "month": "2026-09",
-  "credits_used": 44,
-  "credits_remaining": 456,
+  "credits_used": 46,
+  "credits_remaining": 454,
   "monthly_cap": 500,
-  "pct_used": 8.8,
-  "pulls_left_est": 152,
-  "today": "2026-09-16",
+  "pct_used": 9.2,
+  "pulls_left_est": 151,
+  "today": "2026-09-17",
   "today_credits": 2,
   "daily_limit": 15,
   "buffer_used": 2,
-  "last_call": "2026-09-16T17:23:17Z",
+  "last_call": "2026-09-17T17:22:47Z",
   "last_cost": 2,
-  "updated_at": "2026-09-16T17:23:17Z",
+  "updated_at": "2026-09-17T17:22:47Z",
   "note": "The Odds API free tier = 500 credits per calendar month, resets on the 1st. Exceeding it returns HTTP 401 until the reset \u2014 never a charge. Cost = 1 credit per market per pull (all 3 markets = 3, --markets spread = 1)."
 }
