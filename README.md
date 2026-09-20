@@ -125,6 +125,28 @@ Numbers come from the API response headers, so they count **every** call on the
 account — local runs and CI alike. `python fetch_lines.py --status` shows the
 same thing locally (plus the `--force` buffer) without spending a call.
 
+## Personnel — `data/rosters.json`
+
+Lines say what the market thinks; they say nothing about who is playing. A
+second fetcher keeps a small per-team file of the **starting QB and the
+absences** — OUT, DOUBTFUL, IR/PUP — so a model picking survivor teams is not
+recalling depth charts from memory.
+
+```bash
+python fetch_rosters.py                  # current week -> data/rosters.json
+python fetch_rosters.py --week 1         # backfill a past week
+python -m unittest test_rosters -v       # abbreviation + null-safety tests
+```
+
+No API key: QB1 comes from the nflverse `depth_charts` release, injuries from
+ESPN's public JSON. Team keys match `nfl.json`, so the two files join on team.
+`pull-rosters.yml` runs it Wednesday and Saturday evenings ET (after the injury
+reports are filed) and **commits only when a team actually changed**, so
+`git log data/rosters.json` is a changelog of personnel movement.
+
+Every field is sourced or `null` — nothing is inferred. Full glossary:
+[`data/README.md`](data/README.md#rostersjson--weekly-personnel).
+
 ## View
 
 `lines.html` is a standalone viewer — double-click to open, no server. Local
