@@ -21,3 +21,6 @@ data/*.html
 # local private credit counter (day tally, --force buffer). The public,
 # durable one is data/usage.json.
 .usage.json
+
+# roster fetcher run log (the workflow tees to it to build the commit subject)
+fetch.log

@@ -1,0 +1,90 @@
+name: pull-rosters
+
+# Keeps data/rosters.json fresh: starting QB + who is OUT/DOUBTFUL/IR, per team.
+# Companion to pull-lines.yml — that file is what the market thinks, this one is
+# who is actually playing. Same raw-URL consumption pattern.
+#
+# No API key. Both sources are free and keyless:
+#   QB1                 -> nflverse-data depth_charts release (snapshots, ~2x/day)
+#   OUT / DOUBTFUL / IR -> ESPN's public injuries JSON
+#
+# Cadence — both crons land inside the same NFL game week, which runs Wed 07:00
+# UTC -> the following Wed 06:59 UTC on ESPN's calendar:
+#   * Thu 01:00 UTC = Wed  9pm ET (8pm EST) -> first practice reports are all in
+#   * Sun 01:00 UTC = Sat  9pm ET (8pm EST) -> final designations, plus the 4pm ET
+#                                              Saturday practice-squad elevations
+# Evening ET on purpose: teams file through the afternoon, so an earlier run
+# would capture a half-filed report and commit it as if it were the final one.
+#
+# The script rewrites data/rosters.json ONLY when a team's block actually
+# changes, so `git log data/rosters.json` is a changelog of personnel movement
+# rather than a heartbeat. An unchanged run commits nothing at all.
+
+on:
+  schedule:
+    - cron: "0 1 * * 4"        # Thu 01:00 UTC -> Wed evening ET, practice reports
+    - cron: "0 1 * * 0"        # Sun 01:00 UTC -> Sat evening ET, final + elevations
+  workflow_dispatch:
+    inputs:
+      week:
+        description: "Regular-season week to backfill (blank = the current week)"
+        type: string
+        required: false
+      force_write:
+        description: "Rewrite the file even if nothing changed"
+        type: boolean
+        default: false
+
+concurrency:
+  group: pull-rosters
+  cancel-in-progress: false
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      # Cheap guard: the abbreviation map is the only thing standing between a
+      # source renaming a team and that team silently emptying out.
+      - name: Test team normalization
+        run: python -m unittest test_rosters -v
+
+      - name: Pull rosters
+        env:
+          WEEK: ${{ github.event.inputs.week }}
+          FORCE: ${{ github.event.inputs.force_write }}
+        run: |
+          set -o pipefail
+          ARGS=(--out data/rosters.json)
+          # if-blocks, not `cond && assign`: these steps run under `bash -e`,
+          # where a false test at the top level aborts the whole step.
+          if [ -n "$WEEK" ]; then
+            ARGS+=(--week "$WEEK")
+          fi
+          if [ "$FORCE" = "true" ]; then
+            ARGS+=(--force-write)
+          fi
+          python fetch_rosters.py "${ARGS[@]}" 2>&1 | tee fetch.log
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/rosters.json
+          if git diff --cached --quiet; then
+            echo "no personnel change — nothing to commit"
+          else
+            WEEK_LABEL=$(python -c "import json;print(json.load(open('data/rosters.json'))['_meta']['week'])")
+            MOVED=$(sed -n 's/^\[changed\] //p' fetch.log | tail -1)
+            git commit -m "data: rosters wk${WEEK_LABEL} — ${MOVED:-updated}"
+            git push
+          fi
