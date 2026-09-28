@@ -820,8 +820,14 @@ def coverage_baselines(history_path, pulls=COVERAGE_BASELINE_PULLS):
 def coverage_alarm(raw, roster, history_path):
     """Annotate CI when a book goes missing or drops well below its own norm.
 
+    Returns alarm records for scripts/alarm.py. A book at ZERO games is a
+    condition worth paging about: it means an outage, a dead key, or a plan that
+    does not cover it, and it can be cleared. Degraded-but-present coverage stays
+    an annotation only — normal book-by-book variance is not worth a notification.
+
     Never raises: a broken alarm must not cost a pull we already paid for.
     """
+    records = []
     try:
         games = {ev.get("id") for ev in raw or []}
         if not games:
@@ -846,11 +852,36 @@ def coverage_alarm(raw, roster, history_path):
                       f"plan does not cover it (the API returns 200 with the book "
                       f"simply absent).")
                 note = "  <-- ZERO"
+                # Per-book label: books fail independently, so DraftKings
+                # recovering must not close FanDuel's issue.
+                records.append({
+                    "label": f"alarm:book-missing-{book}",
+                    "title": f"[alarm] book returning 0 games: {book}",
+                    "body": (f"`{book}` returned **0 of {len(games)}** games on the "
+                             f"last pull"
+                             + (f", against a baseline of {base:.0%} over the last "
+                                f"{n_pulls} pulls" if base is not None else "")
+                             + ".\n\nThis is a silent failure mode: requesting a "
+                               "book the plan does not cover returns HTTP 200 with "
+                               "the book simply absent, not an error. Check the key "
+                               "against the docs and whether it is paid-tier only "
+                               "(Caesars and Fanatics both are).\n\nThis issue "
+                               "closes itself once the book returns games again."),
+                    "state": "firing", "throttle_hours": 24, "auto_close": True,
+                })
             elif frac < COVERAGE_FLOOR and base is not None and base > COVERAGE_USUALLY:
                 print(f"::warning::coverage: {book} covered {covered}/{len(games)} "
                       f"games ({frac:.0%}) but normally covers {base:.0%} over the "
                       f"last {n_pulls} pulls.")
                 note = f"  <-- low (baseline {base:.0%})"
+            else:
+                # present at all -> clear any open issue for this book
+                records.append({
+                    "label": f"alarm:book-missing-{book}",
+                    "title": f"[alarm] book returning 0 games: {book}",
+                    "body": f"`{book}` is returning {covered}/{len(games)} games again.",
+                    "state": "clear", "throttle_hours": 24, "auto_close": True,
+                })
             lines.append(f"     {book:14s} {covered:2d}/{len(games)}  {frac:5.1%}"
                          + (f"  baseline {base:.0%}" if base is not None else
                             "  baseline n/a")
@@ -862,6 +893,7 @@ def coverage_alarm(raw, roster, history_path):
     except Exception as e:                      # noqa: BLE001 - deliberate
         print(f"[warn] coverage alarm failed ({type(e).__name__}: {e}) — "
               f"the pull itself is unaffected", file=sys.stderr)
+    return records
 
 
 # --------------------------------------------------------------------------- #
@@ -995,6 +1027,9 @@ def main():
                     help="skip writing the .csv / .html alongside --out")
     ap.add_argument("--raw", action="store_true",
                     help="dump the untouched API response instead of normalizing")
+    ap.add_argument("--alarms-out", default=None,
+                    help="write alarm records here for scripts/alarm.py to route "
+                         "into GitHub issues")
     ap.add_argument("--writer", default="manual",
                     help="who is pulling: recorded on every history row and in "
                          "_meta.last_pull[writer], which the close gate's "
@@ -1063,7 +1098,15 @@ def main():
         else:
             hist_path = Path("data/history.jsonl")
         log_history_safely(hist_path, raw, pulled_at, writer=args.writer)
-        coverage_alarm(raw, adapter.books, hist_path)
+        cov_alarms = coverage_alarm(raw, adapter.books, hist_path)
+        if args.alarms_out:
+            try:
+                Path(args.alarms_out).parent.mkdir(parents=True, exist_ok=True)
+                Path(args.alarms_out).write_text(json.dumps(cov_alarms, indent=2) + "\n")
+                print(f"[ok] wrote {len(cov_alarms)} alarm record(s) to "
+                      f"{args.alarms_out}", file=sys.stderr)
+            except OSError as e:
+                print(f"[warn] could not write {args.alarms_out}: {e}", file=sys.stderr)
 
     if metered:
         usage.record(adapter.last_cost or adapter.estimated_cost,

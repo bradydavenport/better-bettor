@@ -69,11 +69,42 @@ and it skips markets that `--merge` carried forward rather than dating them wron
 
 ## `sniped.json` — closes already captured
 
-`{game_id: {commence_time, matchup, sniped_at}}`, keyed by Odds API event id, so
+Two maps. `sniped` is `{game_id: {commence_time, matchup, sniped_at}}`, keyed by Odds API event id, so
 the every-15-minutes gate doesn't pull twice for the same close. Entries are
 pruned 14 days after kickoff. Written **only after a pull succeeds** — marking
 first would record a close as captured even when the pull failed, and a missed
 close cannot be recovered later.
+
+`missed` is `{game_id: {commence_time, matchup, reported_at}}` — games whose close
+was never captured **and whose miss has already been reported**. The gate looks
+back 6 hours for misses, which is 24 runs at `*/15`; without this the same game
+would page every 15 minutes. Each game is reported exactly once.
+
+## Alarms
+
+Three conditions open a GitHub issue rather than just annotating a log, because
+nobody reads a green run's log:
+
+| label | fixed title | kind |
+|---|---|---|
+| `alarm:pull-lines-stale` | `[alarm] pull-lines has stopped pulling` | condition — auto-closes |
+| `alarm:book-missing-<book>` | `[alarm] book returning 0 games: <book>` | condition — auto-closes, one label per book |
+| `alarm:missed-close` | `[alarm] closing line missed` | **event — never auto-closes** |
+
+Conditions comment at most once per day while firing and close themselves with a
+recovery comment when fixed. A second trip later opens a *new* issue.
+
+A missed close is an event, not a condition: the line is gone and there is nothing
+to recover, so those issues stay open until you close them, and each game is
+reported once with no throttle.
+
+Coverage **warnings** (a book below its own baseline but still present) stay
+annotations only — normal book-by-book variance is not worth a notification.
+
+Runs stay green either way; `::error::` annotations don't fail a job, and the
+router always exits 0. `.github/workflows/test-alarm.yml` is a manual
+`workflow_dispatch` that opens and then closes a `[test]` issue, to confirm the
+channel still works.
 
 ---
 

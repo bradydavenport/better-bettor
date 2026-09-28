@@ -49,6 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write               # alarms are routed to issues, not annotations
     steps:
       - uses: actions/checkout@v4
 
@@ -60,11 +61,49 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           WINDOW: ${{ github.event.inputs.window }}
         run: |
-          ARGS=(--state data/sniped.json)
+          mkdir -p "$RUNNER_TEMP/out"
+          ARGS=(--state data/sniped.json --alarms-out "$RUNNER_TEMP/gate-alarms.json")
           if [ -n "$WINDOW" ]; then
             ARGS+=(--window "$WINDOW")
           fi
           python3 scripts/close_gate.py "${ARGS[@]}"
+
+      # Runs on EVERY gate tick, including the ~99% that do nothing else: the
+      # dead-man's switch and missed-close alarms only exist on this path.
+      - name: Route gate alarms to issues
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/alarm.py --from-file "$RUNNER_TEMP/gate-alarms.json"
+
+      # The gate writes sniped.json when it reports a newly missed close, so that
+      # miss is never reported twice. That is real output on an otherwise no-op
+      # run, so it needs committing even though no pull happened.
+      - name: Commit reported misses
+        if: steps.gate.outputs.missed_recorded == 'true' && steps.gate.outputs.pull != 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/sniped.json
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "data: record reported missed close(s)"
+          for attempt in 1 2 3; do
+            if git push; then exit 0; fi
+            [ "$attempt" = 3 ] && break
+            git fetch origin
+            if git merge-base --is-ancestor HEAD origin/main; then exit 0; fi
+            # Re-deriving is free: re-run the gate against the new origin state.
+            git reset --hard origin/main
+            python3 scripts/close_gate.py --state data/sniped.json --no-deadman
+            git add data/sniped.json
+            git diff --cached --quiet && exit 0
+            git commit -m "data: record reported missed close(s) (replay $attempt)"
+          done
+          exit 1
 
       - name: Install dependencies
         if: steps.gate.outputs.pull == 'true' && github.event.inputs.dry_run != 'true'
@@ -94,7 +133,14 @@ jobs:
         run: |
           python fetch_lines.py --sport nfl --days 12 --drop-empty --merge \
             --markets all --out data/nfl.json --no-render --force \
-            --writer snipe-closes
+            --writer snipe-closes --alarms-out "$RUNNER_TEMP/pull-alarms.json"
+
+      - name: Route coverage alarms to issues
+        if: steps.pull.outputs.pulled == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/alarm.py --from-file "$RUNNER_TEMP/pull-alarms.json"
 
       # Only after the pull succeeded. Marking first would record a close as
       # captured even when the pull failed, and a missed close is unrecoverable.

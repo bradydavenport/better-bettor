@@ -46,6 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write               # coverage alarms open/close issues
     steps:
       - uses: actions/checkout@v4
 
@@ -80,7 +81,14 @@ jobs:
         run: |
           python fetch_lines.py --sport nfl --days 12 --drop-empty --merge \
             --markets "$MARKETS" --out data/nfl.json --no-render --force \
-            --writer pull-lines
+            --writer pull-lines --alarms-out "$RUNNER_TEMP/pull-alarms.json"
+
+      - name: Route coverage alarms to issues
+        if: steps.pull.outputs.pulled == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/alarm.py --from-file "$RUNNER_TEMP/pull-alarms.json"
 
       # Captured to $RUNNER_TEMP, which `git reset --hard` cannot touch.
       - name: Capture this run's outputs
