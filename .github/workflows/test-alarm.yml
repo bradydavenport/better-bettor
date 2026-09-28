@@ -1,0 +1,73 @@
+name: test-alarm
+
+# Manual end-to-end check of the alarm channel: opens a clearly-labelled test
+# issue, then closes it. Run it any time you want to confirm that alarms can
+# still reach you — that GITHUB_TOKEN has issues:write, that the label exists,
+# and that the open/comment/close path works.
+#
+# It never touches data files and costs no API credits. The issue is titled
+# "[test]" so it is obviously not a real alarm.
+
+on:
+  workflow_dispatch:
+    inputs:
+      leave_open:
+        description: "Open the test issue and leave it open (skip the close)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: test-alarm
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fire a test alarm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > "$RUNNER_TEMP/firing.json" <<'JSON'
+          [{"label": "alarm:test",
+            "title": "[test] alarm channel check — safe to close",
+            "body": "This is a test of the alarm router, not a real alarm.\n\nIf you can see this issue, alarms can reach you: the workflow has `issues: write`, the label was created, and `gh issue create` works.\n\nThe same run closes it again unless `leave_open` was set.",
+            "state": "firing", "throttle_hours": 0, "auto_close": true}]
+          JSON
+          python3 scripts/alarm.py --from-file "$RUNNER_TEMP/firing.json"
+
+      - name: Confirm the issue exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          N=$(gh issue list --label alarm:test --state open --json number \
+                --jq 'length')
+          echo "open [test] issues: $N"
+          if [ "$N" -lt 1 ]; then
+            echo "::error::the alarm router did not create an issue — the alarm channel is BROKEN"
+            exit 1
+          fi
+          gh issue list --label alarm:test --state open
+
+      - name: Clear it again
+        if: github.event.inputs.leave_open != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > "$RUNNER_TEMP/clear.json" <<'JSON'
+          [{"label": "alarm:test",
+            "title": "[test] alarm channel check — safe to close",
+            "body": "Test complete. The alarm channel works end to end.",
+            "state": "clear", "throttle_hours": 0, "auto_close": true}]
+          JSON
+          python3 scripts/alarm.py --from-file "$RUNNER_TEMP/clear.json"
+          REMAINING=$(gh issue list --label alarm:test --state open --json number --jq 'length')
+          echo "open [test] issues after clearing: $REMAINING"
+          if [ "$REMAINING" -ne 0 ]; then
+            echo "::error::the test issue was not closed — auto-close is BROKEN"
+            exit 1
+          fi

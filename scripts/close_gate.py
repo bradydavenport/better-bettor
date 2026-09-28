@@ -157,12 +157,28 @@ def load_state(path):
     return (doc.get("sniped") or {}) if isinstance(doc, dict) else {}
 
 
-def save_state(path, sniped, now):
+def load_missed(path):
+    """game_ids whose miss has already been REPORTED.
+
+    A missed close is an event, not a condition: it never recovers, so the alarm
+    must go out exactly once. The gate's 6-hour lookback would otherwise re-report
+    the same game on all 24 runs inside that window.
+    """
+    try:
+        doc = json.loads(Path(path).read_text())
+    except (FileNotFoundError, ValueError):
+        return {}
+    return (doc.get("missed") or {}) if isinstance(doc, dict) else {}
+
+
+def save_state(path, sniped, now, missed=None):
     """Write the ledger of sniped games, pruned so it cannot grow forever."""
     cutoff = now - timedelta(days=PRUNE_DAYS)
     kept = {gid: rec for gid, rec in sniped.items()
             if (_parse(rec.get("commence_time")) or now) >= cutoff}
     pruned = len(sniped) - len(kept)
+    kept_missed = {gid: rec for gid, rec in (missed or {}).items()
+                   if (_parse(rec.get("commence_time")) or now) >= cutoff}
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({
@@ -175,8 +191,15 @@ def save_state(path, sniped, now):
                       "Odds API event id. Entries are dropped "
                       f"{PRUNE_DAYS} days after kickoff. Written only after a "
                       "pull succeeds — never before, so a failed pull retries."),
+            "missed_note": ("games whose close was NEVER captured and whose miss "
+                            "has already been reported as a GitHub issue comment. "
+                            "Tracked so the 6h lookback reports each game once "
+                            "instead of once every 15 minutes. These are losses, "
+                            "not recoveries."),
         },
         "sniped": dict(sorted(kept.items(), key=lambda kv: kv[1].get("commence_time") or "")),
+        "missed": dict(sorted(kept_missed.items(),
+                             key=lambda kv: kv[1].get("commence_time") or "")),
     }, indent=2) + "\n")
     return len(kept), pruned
 
@@ -257,6 +280,15 @@ def deadman_check(nfl_path, now, max_hours=DEADMAN_HOURS, writer=DEADMAN_WRITER)
     return None
 
 
+ALARM_STALE = "alarm:pull-lines-stale"
+ALARM_MISSED = "alarm:missed-close"
+
+
+def alarm(label, title, body, state="firing", throttle_hours=24, auto_close=True):
+    return {"label": label, "title": title, "body": body, "state": state,
+            "throttle_hours": throttle_hours, "auto_close": auto_close}
+
+
 def set_output(key, value):
     """Hand a decision to the workflow. Silent when not running in Actions."""
     path = os.getenv("GITHUB_OUTPUT")
@@ -292,6 +324,9 @@ def main():
     ap.add_argument("--deadman-hours", type=int, default=DEADMAN_HOURS,
                     help=f"alarm when the daily pull is older than this "
                          f"(default: {DEADMAN_HOURS})")
+    ap.add_argument("--alarms-out", default=None,
+                    help="write alarm records here for scripts/alarm.py to route "
+                         "into GitHub issues")
     ap.add_argument("--no-deadman", action="store_true",
                     help="skip the dead-man's switch")
     ap.add_argument("--now", default=None,
@@ -307,11 +342,25 @@ def main():
     # key or a closed gate must not silence it. It previously sat after the
     # events fetch, which meant a /events outage muted the alarm for the daily
     # pull as well: two unrelated failures collapsed into one silence.
+    alarms = []
     if not args.no_deadman:
         stale = deadman_check(args.nfl, now, args.deadman_hours)
         if stale:
             print(f"::error::dead-man's switch: {stale}")
             print(f"[alarm] {stale}", file=sys.stderr)
+            alarms.append(alarm(
+                ALARM_STALE,
+                "[alarm] pull-lines has stopped pulling",
+                f"The dead-man's switch tripped.\n\n> {stale}\n\n"
+                f"`data/nfl.json` `_meta.last_pull['pull-lines']` is the checked "
+                f"field. Look at the **pull-lines** workflow: a cancelled run, a "
+                f"credit block, or an API failure all look like this.\n\n"
+                f"This issue closes itself once a pull-lines run lands."))
+        else:
+            # a condition: emit `clear` every run so a fixed pipeline auto-closes
+            alarms.append(alarm(
+                ALARM_STALE, "[alarm] pull-lines has stopped pulling",
+                "The daily line pull is current again.", state="clear"))
 
     if args.events_file:
         try:
@@ -338,9 +387,50 @@ def main():
     sniped = load_state(args.state)
     due, horizon, missed = decide(events, sniped, now, args.window, args.grace)
 
+    # Missed closes are EVENTS. Report each game exactly once, then remember it,
+    # so the 6h lookback does not re-report the same game on all 24 runs inside
+    # the window. No throttle: a genuinely new miss should page immediately.
+    reported = load_missed(args.state)
+    fresh = [(e, mins) for e, mins in missed if e.get("id") not in reported]
     for e, mins in sorted(missed, key=lambda x: x[1]):
+        seen = "" if e.get("id") not in reported else " (already reported)"
         print(f"::warning::missed close: {e.get('away_team')} @ {e.get('home_team')} "
-              f"kicked off {abs(mins):.0f} min ago and was never sniped")
+              f"kicked off {abs(mins):.0f} min ago and was never sniped{seen}")
+
+    if fresh and not args.mark:
+        lines = "\n".join(
+            f"- **{e.get('away_team')} @ {e.get('home_team')}** — kicked off "
+            f"{e.get('commence_time')} ({abs(mins):.0f} min ago), game_id `{e.get('id')}`"
+            for e, mins in sorted(fresh, key=lambda x: x[1]))
+        alarms.append(alarm(
+            ALARM_MISSED,
+            "[alarm] closing line missed",
+            f"These games started without their closing line being captured. "
+            f"A missed close cannot be recovered later.\n\n{lines}\n\n"
+            f"Likely causes: the gate was closed or rate limited through the whole "
+            f"45-minute window, every push attempt failed, or the schedule moved "
+            f"after the last gate run.\n\n"
+            f"_This issue stays open until you close it — a missed close is an "
+            f"event, not a condition, so it never 'recovers'. Each game is "
+            f"reported once._",
+            throttle_hours=0, auto_close=False))
+        for e, _ in fresh:
+            reported[e["id"]] = {
+                "commence_time": e.get("commence_time"),
+                "matchup": f"{e.get('away_team')} @ {e.get('home_team')}",
+                "reported_at": _iso(now),
+            }
+        save_state(args.state, load_state(args.state), now, missed=reported)
+        print(f"[ok] recorded {len(fresh)} newly missed close(s) in {args.state} "
+              f"so they are not reported again", file=sys.stderr)
+        set_output("missed_recorded", "true")
+
+    def flush_alarms():
+        if args.alarms_out:
+            Path(args.alarms_out).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.alarms_out).write_text(json.dumps(alarms, indent=2) + "\n")
+            print(f"[ok] wrote {len(alarms)} alarm record(s) to {args.alarms_out}",
+                  file=sys.stderr)
 
     if args.mark:
         h = _parse(args.horizon) or horizon
@@ -372,6 +462,7 @@ def main():
         for e in captured:
             print(f"     {e.get('commence_time')}  {e.get('away_team')} @ {e.get('home_team')}",
                   file=sys.stderr)
+        flush_alarms()
         return 0
 
     if not due:
@@ -382,6 +473,7 @@ def main():
         print(f"[skip] gate closed — {when}, window is {args.window} min. "
               f"No API pull, no write, no commit.", file=sys.stderr)
         set_output("pull", "false")
+        flush_alarms()
         return 0
 
     captured = in_horizon(events, horizon, now)
@@ -393,6 +485,7 @@ def main():
     set_output("pull", "true")
     set_output("horizon", _iso(horizon))
     set_output("game_count", str(len(captured)))
+    flush_alarms()
     return 0
 
 
