@@ -1,0 +1,116 @@
+name: snipe-closes
+
+# Captures the CLOSING line: a pull ~45 minutes before kickoff, never after.
+# An in-play line is not a close, so the gate refuses to pull once a game starts.
+#
+# Runs every 15 minutes all week and lets the gate decide, rather than hand-writing
+# crons per game window. That is cheaper and more correct:
+#   * the schedule comes from the free /events endpoint, so flex scheduling,
+#     international kickoffs and holiday slates need no special casing. An earlier
+#     draft of this file used nine hand-built crons and still missed Christmas
+#     (Fri Dec 25 2026 kicks off ~01:15 UTC Saturday under EST).
+#   * a no-op run costs 0 credits, writes nothing and commits nothing.
+#   * the repo is public, so Actions minutes are free and unmetered.
+#
+# Cost: /events does not count against the usage quota (docs, and verified:
+# x-requests-last: 0). ~2,900 gate calls/month; no rate limit is documented and a
+# 20-call burst in 3.9s passed cleanly, but the gate treats HTTP 429 as "closed"
+# so an undocumented cap degrades safely instead of breaking.
+#
+# Credits actually spent: ~15/week normally (TNF, two Sunday slates, SNF, MNF at
+# 3 credits each), ~30/week worst case (Thanksgiving's three windows + Black
+# Friday + a Saturday slate + an international kickoff + both Sunday slates +
+# SNF + MNF). The monthly cap is 500.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      window:
+        description: "Minutes before kickoff that open the gate (default 45)"
+        type: string
+        required: false
+      dry_run:
+        description: "Evaluate the gate and stop, without pulling"
+        type: boolean
+        default: false
+
+concurrency:
+  group: odds-data              # shared with the other data workflows: they all
+  cancel-in-progress: false     # commit to main, so let them queue, never race
+
+jobs:
+  snipe:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # The gate is the only step ~99% of runs execute, so it deliberately avoids
+      # setup-python and pip: stdlib-only, on the runner's preinstalled python3.
+      - name: Is a close imminent?
+        id: gate
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          WINDOW: ${{ github.event.inputs.window }}
+        run: |
+          ARGS=(--state data/sniped.json)
+          if [ -n "$WINDOW" ]; then
+            ARGS+=(--window "$WINDOW")
+          fi
+          python3 scripts/close_gate.py "${ARGS[@]}"
+
+      - name: Install dependencies
+        if: steps.gate.outputs.pull == 'true' && github.event.inputs.dry_run != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: pip install
+        if: steps.gate.outputs.pull == 'true' && github.event.inputs.dry_run != 'true'
+        run: pip install -r requirements.txt
+
+      # --force dips into the daily soft limit on purpose: a close cannot be
+      # re-pulled later. The hard guards (monthly cap, api_remaining) still apply
+      # and --force does not override those.
+      - name: Pull the close (all 3 markets)
+        id: pull
+        if: steps.gate.outputs.pull == 'true' && github.event.inputs.dry_run != 'true'
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: |
+          python fetch_lines.py --sport nfl --days 12 --drop-empty --merge \
+            --markets all --out data/nfl.json --no-render --force
+
+      # Only after the pull succeeded. Marking first would record a close as
+      # captured even when the pull failed, and a missed close is unrecoverable.
+      - name: Mark those games sniped
+        if: steps.pull.outputs.pulled == 'true'
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: |
+          python3 scripts/close_gate.py --mark \
+            --state data/sniped.json \
+            --horizon "${{ steps.gate.outputs.horizon }}"
+
+      - name: Commit
+        if: steps.pull.outputs.pulled == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/nfl.json data/usage.json data/history.jsonl data/sniped.json
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "data: close snipe — ${{ steps.gate.outputs.game_count }} game(s) @ ${{ steps.gate.outputs.horizon }}"
+          # Three data workflows push to main; history.jsonl is merge=union so
+          # concurrent appends reconcile instead of conflicting.
+          for i in 1 2 3; do
+            if git push; then exit 0; fi
+            echo "push rejected, rebasing (attempt $i)"
+            git pull --rebase --autostash origin main || exit 1
+          done
+          exit 1

@@ -177,6 +177,22 @@ def _now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def set_output(key, value):
+    """Tell the workflow what happened. Silent outside GitHub Actions.
+
+    The commit step is gated on `pulled`, so a run that made no API call cannot
+    reach `git add` at all — belt and braces alongside writing nothing.
+    """
+    path = os.getenv("GITHUB_OUTPUT")
+    if not path:
+        return
+    try:
+        with open(path, "a") as f:
+            f.write(f"{key}={value}\n")
+    except OSError:
+        pass
+
+
 def _abbr(sport, team):
     return NFL_ABBR.get(team) if sport == "nfl" else None
 
@@ -211,6 +227,15 @@ DEFAULT_DAILY_LIMIT = int(os.getenv("ODDS_DAILY_LIMIT", "15"))
 # whichever key called last.
 USAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "data", "usage.json")
+
+
+class BudgetStop(RuntimeError):
+    """The limiter refused this call.
+
+    Not a failure: it is the guard doing its job. main() turns it into a CI
+    annotation and a clean exit, so a cron that has hit its budget does not paint
+    itself red every run — and, critically, returns before anything is written.
+    """
 
 
 class Usage:
@@ -279,18 +304,19 @@ class Usage:
     def check(self, cost, daily_limit, force=False):
         d = self.data
         if d["month_credits"] + cost > MONTHLY_CAP:
-            sys.exit(f"[blocked] monthly cap {MONTHLY_CAP} would be exceeded "
-                     f"({d['month_credits']} used). Resets on the 1st — no charge.")
+            raise BudgetStop(
+                f"monthly cap {MONTHLY_CAP} would be exceeded "
+                f"({d['month_credits']} used). Resets on the 1st — no charge.")
         if d["api_remaining"] is not None and d["api_remaining"] < cost:
-            sys.exit(f"[blocked] API reports only {d['api_remaining']} credits left "
-                     f"this month (as of last call). --force does NOT override "
-                     f"this; it is the API's own number, not our estimate.")
+            raise BudgetStop(
+                f"API reports only {d['api_remaining']} credits left this month "
+                f"(as of last call). --force does NOT override this; it is the "
+                f"API's own number, not our estimate.")
         if not force and d["day_credits"] + cost > daily_limit:
-            sys.exit(
-                f"[blocked] daily limit {daily_limit} would be exceeded "
-                f"({d['day_credits']} used today, this call costs {cost}).\n"
-                f"          --force to dip into the monthly buffer, "
-                f"--status to see counters."
+            raise BudgetStop(
+                f"daily limit {daily_limit} would be exceeded "
+                f"({d['day_credits']} used today, this call costs {cost}). "
+                f"--force to dip into the monthly buffer, --status to see counters."
             )
 
     def record(self, cost, force=False, api_remaining=None, api_used=None,
@@ -373,6 +399,13 @@ class Usage:
 # what 1 book costs. Verified against a real response: 10 books x markets=h2h
 # returned `x-requests-last: 1`. Adding the 9 extra books was free.
 #
+# Prediction-market exchanges rather than sportsbooks. Their quotes are peer-to-peer
+# and the price almost certainly excludes the platform's fee, so it is not directly
+# comparable to a book's vig-inclusive line. Rows from these carry `exchange: true`
+# as a FLAG ONLY — nothing here adjusts a price, because the correct adjustment
+# depends on the fee schedule and we do not have it.
+EXCHANGE_BOOKS = frozenset({"kalshi", "novig"})
+
 # KEEP THIS LIST AT 10 OR FEWER. An 11th book silently doubles every pull.
 BENCHMARK_BOOK = "pinnacle"
 EXTRA_BOOKS = (
@@ -616,6 +649,8 @@ ADAPTERS = {
 HISTORY_FIELDS = ("fetched_at", "last_update", "game_id", "commence_time",
                   "home", "away", "book", "market", "outcome", "price",
                   "point", "source")
+# Present only when true, so absence means "an ordinary sportsbook".
+HISTORY_OPTIONAL_FIELDS = ("exchange",)
 
 
 def history_rows(raw, fetched_at, source="live"):
@@ -640,7 +675,7 @@ def history_rows(raw, fetched_at, source="live"):
             for mkt in bk.get("markets") or []:
                 for out in mkt.get("outcomes") or []:
                     price = out.get("price")
-                    rows.append({
+                    row = {
                         "fetched_at": fetched_at,
                         "last_update": mkt.get("last_update") or book_stamp,
                         "game_id": game_id,
@@ -653,7 +688,10 @@ def history_rows(raw, fetched_at, source="live"):
                         "price": int(price) if price is not None else None,
                         "point": out.get("point"),
                         "source": source,
-                    })
+                    }
+                    if bk.get("key") in EXCHANGE_BOOKS:
+                        row["exchange"] = True
+                    rows.append(row)
     return rows
 
 
@@ -693,6 +731,118 @@ def log_history_safely(path, raw, fetched_at):
 
 
 # --------------------------------------------------------------------------- #
+# coverage alarm
+# --------------------------------------------------------------------------- #
+#
+# A book can vanish from the response without any error: request a key the plan
+# does not cover and you get HTTP 200 with that book simply absent. That is not
+# hypothetical — williamhill_us (Caesars) returns 0 of 16 games on the free tier.
+# A silent zero looks exactly like "no lines posted yet", so it needs an alarm.
+#
+# The threshold cannot be a flat percentage. Real coverage on one pull ranged from
+# pinnacle at 75% to five books at 100%, so a fixed ">80% is normal" bar would cry
+# wolf about Pinnacle on every run. Instead each book is compared against ITS OWN
+# recent history, and the degraded-coverage alarm only fires for books that
+# normally clear 80%.
+
+COVERAGE_BASELINE_PULLS = 20
+COVERAGE_FLOOR = 0.50
+COVERAGE_USUALLY = 0.80
+_TAIL_BYTES = 8 * 1024 * 1024
+
+
+def _tail_rows(path, max_bytes=_TAIL_BYTES):
+    """Parse the last chunk of a JSONL ledger. Bounded, so it stays cheap as the
+    file grows across a season."""
+    p = Path(path)
+    if not p.exists():
+        return []
+    size = p.stat().st_size
+    with open(p, "rb") as f:
+        if size > max_bytes:
+            f.seek(size - max_bytes)
+            f.readline()            # discard the partial first line
+        raw = f.read().decode("utf-8", "replace")
+    rows = []
+    for line in raw.splitlines():
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
+    return rows
+
+
+def coverage_baselines(history_path, pulls=COVERAGE_BASELINE_PULLS):
+    """{book: median coverage fraction} over the most recent `pulls` pulls."""
+    rows = [r for r in _tail_rows(history_path) if r.get("source") == "live"]
+    by_pull = {}
+    for r in rows:
+        by_pull.setdefault(r.get("fetched_at"), []).append(r)
+    recent = [by_pull[k] for k in sorted(by_pull)[-pulls:]]
+    per_book = {}
+    for batch in recent:
+        games = {r.get("game_id") for r in batch}
+        if not games:
+            continue
+        for book in {r.get("book") for r in batch}:
+            covered = len({r.get("game_id") for r in batch if r.get("book") == book})
+            per_book.setdefault(book, []).append(covered / len(games))
+    out = {}
+    for book, vals in per_book.items():
+        vals.sort()
+        mid = len(vals) // 2
+        out[book] = vals[mid] if len(vals) % 2 else (vals[mid - 1] + vals[mid]) / 2
+    return out, len(recent)
+
+
+def coverage_alarm(raw, roster, history_path):
+    """Annotate CI when a book goes missing or drops well below its own norm.
+
+    Never raises: a broken alarm must not cost a pull we already paid for.
+    """
+    try:
+        games = {ev.get("id") for ev in raw or []}
+        if not games:
+            print("::warning::coverage: the response contained no games at all")
+            return
+        seen = {}
+        for ev in raw or []:
+            for bk in ev.get("bookmakers") or []:
+                seen.setdefault(bk.get("key"), set()).add(ev.get("id"))
+        baselines, n_pulls = coverage_baselines(history_path)
+
+        lines = []
+        for book in roster:
+            covered = len(seen.get(book, ()))
+            frac = covered / len(games)
+            base = baselines.get(book)
+            note = ""
+            if covered == 0:
+                # a book returning nothing at all is an outage or a dead key
+                print(f"::error::coverage: {book} returned 0 of {len(games)} games. "
+                      f"Either the book posted nothing, the key is wrong, or the "
+                      f"plan does not cover it (the API returns 200 with the book "
+                      f"simply absent).")
+                note = "  <-- ZERO"
+            elif frac < COVERAGE_FLOOR and base is not None and base > COVERAGE_USUALLY:
+                print(f"::warning::coverage: {book} covered {covered}/{len(games)} "
+                      f"games ({frac:.0%}) but normally covers {base:.0%} over the "
+                      f"last {n_pulls} pulls.")
+                note = f"  <-- low (baseline {base:.0%})"
+            lines.append(f"     {book:14s} {covered:2d}/{len(games)}  {frac:5.1%}"
+                         + (f"  baseline {base:.0%}" if base is not None else
+                            "  baseline n/a")
+                         + note)
+        print(f"[ok] book coverage ({len(games)} games, baselines from "
+              f"{n_pulls} prior pull(s)):", file=sys.stderr)
+        for line in lines:
+            print(line, file=sys.stderr)
+    except Exception as e:                      # noqa: BLE001 - deliberate
+        print(f"[warn] coverage alarm failed ({type(e).__name__}: {e}) — "
+              f"the pull itself is unaffected", file=sys.stderr)
+
+
+# --------------------------------------------------------------------------- #
 # cli
 # --------------------------------------------------------------------------- #
 
@@ -721,10 +871,14 @@ def self_test_limiter():
             u.data["day"] = u.data["month"] = None
             u.data.update(ledger.get("_counters", {}))
             blocked = False
+            wrote_before = os.path.getmtime(path)
             try:
                 u.check(cost, limit, force=force)
-            except SystemExit:
+            except BudgetStop:
                 blocked = True
+            # a refused call must not have touched the ledger on its way out
+            assert os.path.getmtime(path) == wrote_before, \
+                "check() wrote to the ledger while refusing a call"
             ok = blocked == expect_block
             results.append((ok, name,
                             f"expected {'BLOCK' if expect_block else 'PASS'}, "
@@ -831,12 +985,14 @@ def main():
     args = ap.parse_args()
 
     if args.self_test_limiter:
+        set_output("pulled", "false")
         self_test_limiter()
         return
 
     usage = Usage()
 
     if args.status:
+        set_output("pulled", "false")
         print(usage.render(args.daily_limit))
         return
 
@@ -852,7 +1008,18 @@ def main():
 
     metered = args.source == "theoddsapi"
     if metered:
-        usage.check(adapter.estimated_cost, args.daily_limit, force=args.force)
+        try:
+            usage.check(adapter.estimated_cost, args.daily_limit, force=args.force)
+        except BudgetStop as e:
+            # No API call, so: nothing written, nothing to commit, and a clean
+            # exit rather than a red run for a condition the guard is built to
+            # produce. Visible in CI as an annotation.
+            print(f"::warning::pull skipped — {e}")
+            print(f"[skip] {e}", file=sys.stderr)
+            print("[skip] no API call made; no file written, nothing to commit",
+                  file=sys.stderr)
+            set_output("pulled", "false")
+            return
 
     raw = adapter.fetch_raw(args.sport, days=args.days)
 
@@ -867,6 +1034,7 @@ def main():
         else:
             hist_path = Path("data/history.jsonl")
         log_history_safely(hist_path, raw, _now_iso())
+        coverage_alarm(raw, adapter.books, hist_path)
 
     if metered:
         usage.record(adapter.last_cost or adapter.estimated_cost,
@@ -949,8 +1117,10 @@ def main():
             csv_path, html_path = render.render(
                 out_obj["games"], meta=out_obj["_meta"], stem=p.stem, outdir=p.parent)
             print(f"[ok] wrote {csv_path}  +  {html_path}", file=sys.stderr)
+        set_output("pulled", "true")
     else:
         print(text)
+        set_output("pulled", "true")
 
 
 if __name__ == "__main__":
