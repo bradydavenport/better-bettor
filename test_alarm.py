@@ -24,8 +24,9 @@ NOW = datetime(2026, 9, 28, 12, 0, 0, tzinfo=timezone.utc)
 class FakeGh:
     """Records what would have been done, and models open/closed state."""
 
-    def __init__(self, issues=None):
+    def __init__(self, issues=None, assignee=None):
         self.issues = issues or []
+        self.assignee = assignee
         self.next = len(self.issues) + 1
         self.created, self.comments, self.closed, self.labels = [], [], [], []
 
@@ -40,6 +41,7 @@ class FakeGh:
     def create_issue(self, title, body, label):
         self.issues.append({"number": self.next, "title": title,
                             "labels": [{"name": label}], "createdAt": NOW,
+                            "assignees": [self.assignee] if self.assignee else [],
                             "comments": []})
         self.created.append((title, label, body))
         self.next += 1
@@ -142,6 +144,50 @@ class TestEvents(unittest.TestCase):
         self.assertEqual(gh.closed, [], "a missed close never recovers")
         self.assertEqual(gh.comments, [])
         self.assertIn("auto_close is off", msg)
+
+
+class TestNotification(unittest.TestCase):
+    """An issue nobody is assigned to and nobody is mentioned in never reaches a
+    phone. The test alarm proved that: the issue was created, no push arrived."""
+
+    def test_new_issue_is_assigned_and_mentions_them(self):
+        gh = FakeGh(assignee="bradydavenport")
+        handle(gh, rec(), gh.issues, NOW)
+        title, label, body = gh.created[0]
+        self.assertTrue(body.startswith("@bradydavenport"),
+                        "the mention must lead the body, where a notification "
+                        "preview shows it")
+        self.assertEqual(gh.issues[0]["assignees"], ["bradydavenport"])
+
+    def test_recovery_comment_mentions_them(self):
+        gh = FakeGh([issue(1, "alarm:x", NOW - timedelta(hours=5))],
+                    assignee="bradydavenport")
+        handle(gh, rec(state="clear"), gh.issues, NOW)
+        self.assertTrue(gh.comments[0][1].startswith("@bradydavenport"))
+
+    def test_new_miss_comment_mentions_them(self):
+        gh = FakeGh([issue(1, "alarm:missed-close", NOW - timedelta(minutes=1))],
+                    assignee="bradydavenport")
+        handle(gh, rec("alarm:missed-close", throttle=0, auto_close=False),
+               gh.issues, NOW)
+        self.assertTrue(gh.comments[0][1].startswith("@bradydavenport"))
+
+    def test_still_firing_comment_mentions_them(self):
+        gh = FakeGh([issue(1, "alarm:x", NOW - timedelta(hours=30))],
+                    assignee="bradydavenport")
+        handle(gh, rec(), gh.issues, NOW)
+        self.assertTrue(gh.comments[0][1].startswith("@bradydavenport"))
+
+    def test_no_assignee_leaves_bodies_clean_rather_than_writing_at_none(self):
+        gh = FakeGh()
+        handle(gh, rec(), gh.issues, NOW)
+        self.assertFalse(gh.created[0][2].startswith("@"))
+
+    def test_mention_helper(self):
+        from scripts.alarm import mention
+        self.assertEqual(mention("bradydavenport"), "@bradydavenport\n\n")
+        self.assertEqual(mention(None), "")
+        self.assertEqual(mention(""), "")
 
 
 class TestRobustness(unittest.TestCase):

@@ -54,6 +54,7 @@ are the alarm channel; the run status is not.
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -61,6 +62,17 @@ from datetime import datetime, timedelta, timezone
 
 DEFAULT_THROTTLE_HOURS = 24
 LABEL_COLOR = "d73a4a"
+
+
+def mention(assignee):
+    """An @mention line, or nothing when no assignee is configured.
+
+    Assignment alone was not enough to get a push notification through, so every
+    issue body and every comment leads with an explicit @mention. The two
+    mechanisms are independent: assignment shows in the issue list and filters,
+    the mention is what reliably pages.
+    """
+    return f"@{assignee}\n\n" if assignee else ""
 
 
 def _now():
@@ -88,10 +100,11 @@ class Gh:
     exercised without creating real issues in a real repo.
     """
 
-    def __init__(self, binary="gh", repo=None, dry_run=False):
+    def __init__(self, binary="gh", repo=None, dry_run=False, assignee=None):
         self.binary = binary
         self.repo = repo
         self.dry_run = dry_run
+        self.assignee = assignee
         self.calls = []
 
     def _run(self, args, stdin=None, mutating=False):
@@ -140,8 +153,20 @@ class Gh:
             pass          # already exists, which is the common case
 
     def create_issue(self, title, body, label):
-        return self._run(["issue", "create", "--title", title, "--label", label,
-                          "--body-file", "-"], stdin=body, mutating=True)
+        args = ["issue", "create", "--title", title, "--label", label,
+                "--body-file", "-"]
+        if self.assignee:
+            try:
+                return self._run(args + ["--assignee", self.assignee],
+                                 stdin=body, mutating=True)
+            except GhError as e:
+                # gh refuses an assignee who is not an assignable collaborator.
+                # An un-assigned alarm still beats no alarm, so fall back rather
+                # than losing the issue entirely — the body still @mentions them.
+                print(f"::warning::alarm router: could not assign "
+                      f"{self.assignee} ({e}); opening it unassigned",
+                      file=sys.stderr)
+        return self._run(args, stdin=body, mutating=True)
 
     def comment(self, number, body):
         return self._run(["issue", "comment", str(number), "--body-file", "-"],
@@ -186,15 +211,17 @@ def handle(gh, rec, issues, now):
         dur = (f", firing for {(now - since).total_seconds() / 3600:.1f}h"
                if since else "")
         gh.comment(existing["number"],
-                   f"Recovered at {_iso(now)}{dur}.\n\n{body}".strip())
+                   f"{mention(gh.assignee)}Recovered at {_iso(now)}{dur}."
+                   f"\n\n{body}".strip())
         gh.close(existing["number"])
         return f"{label}: RECOVERED -> closed #{existing['number']}{dur}"
 
     # firing
     if not existing:
         gh.ensure_label(label, title)
-        gh.create_issue(title, f"{body}\n\n_Opened by the alarm router at "
-                               f"{_iso(now)}._", label)
+        gh.create_issue(title,
+                        f"{mention(gh.assignee)}{body}\n\n_Opened by the alarm "
+                        f"router at {_iso(now)}._", label)
         return f"{label}: FIRING -> opened a new issue"
 
     n = existing["number"]
@@ -204,7 +231,8 @@ def handle(gh, rec, issues, now):
             age = (now - last).total_seconds() / 3600
             return (f"{label}: still firing, #{n} last touched {age:.1f}h ago "
                     f"(< {throttle}h) — staying quiet")
-    gh.comment(n, f"Still firing at {_iso(now)}.\n\n{body}".strip())
+    gh.comment(n, f"{mention(gh.assignee)}Still firing at {_iso(now)}."
+                  f"\n\n{body}".strip())
     return f"{label}: still firing -> commented on #{n}"
 
 
@@ -215,6 +243,10 @@ def main():
                     help="JSON list of alarm records (a missing file is fine)")
     ap.add_argument("--gh-bin", default="gh", help="the gh executable (tests stub it)")
     ap.add_argument("--repo", default=None, help="owner/name (gh infers by default)")
+    ap.add_argument("--assignee", default=os.getenv("ALARM_ASSIGNEE") or None,
+                    help="GitHub user to assign and @mention on every alarm "
+                         "(default: $ALARM_ASSIGNEE). Without this, alarms open "
+                         "issues that generate no push notification.")
     ap.add_argument("--dry-run", action="store_true",
                     help="read state but make no changes")
     ap.add_argument("--now", default=None, help="override the clock — for tests")
@@ -243,7 +275,12 @@ def main():
               f"were detected but not routed to issues")
         return 0
 
-    gh = Gh(args.gh_bin, repo=args.repo, dry_run=args.dry_run)
+    if not args.assignee:
+        print("::warning::alarm router: no --assignee/$ALARM_ASSIGNEE — issues "
+              "will be opened with nobody assigned and nobody @mentioned, which "
+              "means no notification")
+    gh = Gh(args.gh_bin, repo=args.repo, dry_run=args.dry_run,
+            assignee=args.assignee)
     try:
         issues = gh.open_issues()
     except GhError as e:
