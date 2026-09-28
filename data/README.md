@@ -16,9 +16,52 @@ the file and nothing else. This README is the human version of that.
 | `nfl.csv`, `nfl.html` | rendered views of the same | `render.py` | alongside `nfl.json` |
 | `usage.json` | The Odds API credit counter | `fetch_lines.py` | alongside `nfl.json` |
 | `rosters.json` | starting QB + absences per team | `fetch_rosters.py` | Wed + Sat evenings ET |
+| `history.jsonl` | append-only line ledger, all 10 books | `fetch_lines.py` | every pull |
+| `history_backfill.jsonl` | the same schema rebuilt from git history | `scripts/backfill_history.py` | on demand |
+| `sniped.json` | which closes have already been captured | `scripts/close_gate.py` | every snipe |
 
 `nfl.json` is documented in the root [README](../README.md#output-shape).
-`rosters.json` is documented below.
+`rosters.json`, `history.jsonl` and `sniped.json` are documented below.
+
+---
+
+## `history.jsonl` — the line ledger
+
+One JSON object per line: **book × game × market × outcome**, written from the raw
+API response on every pull, before normalization touches anything. Append-only —
+never rewritten, deduped or sorted. Repeat rows with no movement are data: they
+prove the line held.
+
+`nfl.json` carries Pinnacle alone; this carries all 10 books, which is the point.
+It is what closing-line value is computed from.
+
+| field | meaning |
+|---|---|
+| `fetched_at` | when we pulled |
+| `last_update` | the **market**-level stamp from the API (the bookmaker-level one is deprecated in v4) |
+| `game_id`, `commence_time`, `home`, `away` | the game |
+| `book` | API bookmaker key |
+| `market` | `h2h`, `spreads` or `totals` |
+| `outcome` | team name, or `Over` / `Under` |
+| `price` | American odds |
+| `point` | spread/total number, `null` for `h2h`. **API convention: negative = favored** — the opposite sign from `nfl.json`'s `spread` field |
+| `source` | `live`, or `git_backfill` for rows reconstructed from git |
+| `exchange` | `true` on `kalshi` / `novig` only. Their prices are peer-to-peer and almost certainly exclude platform fees, so they are not directly comparable to a book's vig-inclusive line. **Flag only — no price is adjusted**, because that needs a fee schedule we don't have. Absent means an ordinary sportsbook. |
+
+`.gitattributes` sets `merge=union` on this file so concurrent appends from three
+workflows reconcile instead of conflicting.
+
+The backfill file recovers **Pinnacle only**, because Pinnacle is the only book
+that was ever pulled before the ledger existed. It invents nothing for the others,
+and it skips markets that `--merge` carried forward rather than dating them wrong.
+
+## `sniped.json` — closes already captured
+
+`{game_id: {commence_time, matchup, sniped_at}}`, keyed by Odds API event id, so
+the every-15-minutes gate doesn't pull twice for the same close. Entries are
+pruned 14 days after kickoff. Written **only after a pull succeeds** — marking
+first would record a close as captured even when the pull failed, and a missed
+close cannot be recovered later.
 
 ---
 

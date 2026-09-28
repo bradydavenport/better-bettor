@@ -36,7 +36,7 @@ on:
         default: false
 
 concurrency:
-  group: pull-rosters
+  group: odds-data              # shared with pull-lines / snipe-closes: all push to main
   cancel-in-progress: false
 
 jobs:

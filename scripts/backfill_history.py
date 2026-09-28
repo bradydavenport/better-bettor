@@ -67,7 +67,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from fetch_lines import HISTORY_FIELDS          # noqa: E402  - schema parity
+from fetch_lines import (                       # noqa: E402  - schema parity
+    HISTORY_FIELDS,
+    HISTORY_OPTIONAL_FIELDS,
+)
 
 TRACKED = "data/nfl.json"
 DEFAULT_OUT = "data/history_backfill.jsonl"
@@ -220,9 +223,12 @@ def main():
         print(f"  {sha[:8]}  {commit_time}  {schema:22s} games={len(games):2d} rows={n:3d}",
               file=sys.stderr)
 
-    # schema parity with the live ledger — a drift here would split the dataset
+    # Schema parity with the live ledger — a drift here would split the dataset.
+    # Optional fields may be absent: `exchange` only appears on exchange rows, and
+    # no exchange existed in git history (Pinnacle was the only book ever pulled).
     for r in all_rows[:1]:
-        extra, missing = set(r) - set(HISTORY_FIELDS), set(HISTORY_FIELDS) - set(r)
+        extra = set(r) - set(HISTORY_FIELDS) - set(HISTORY_OPTIONAL_FIELDS)
+        missing = set(HISTORY_FIELDS) - set(r)
         if extra or missing:
             sys.exit(f"[fatal] schema drift vs fetch_lines.HISTORY_FIELDS: "
                      f"extra={extra} missing={missing}")
