@@ -17,9 +17,11 @@ import unittest
 from fetch_rosters import (
     CANON_TEAMS,
     TEAM_ALIASES,
+    VOLATILE_FIELDS,
     build_teams,
     carry_updated_at,
     norm_team,
+    substantive,
     week_for,
 )
 
@@ -161,6 +163,108 @@ class TestUpdatedAtCarryForward(unittest.TestCase):
         teams, changed = carry_updated_at({}, new, self.NOW)
         self.assertEqual(teams["PHI"]["updated_at"], self.NOW)
         self.assertEqual(changed, [])
+
+
+class TestVolatileTimestampsNeverTriggerAWrite(unittest.TestCase):
+    """The regression that turned the ledger into a heartbeat.
+
+    Two CI commits two hours apart both reported all 32 teams changed. All 32
+    differed only in `qb.as_of`, which nflverse advances about twice a day with
+    the same QB1 behind it. Two teams had actually moved. So: `as_of` rides along
+    with a write, and never causes one.
+    """
+
+    OLD, NOW = "2026-09-27T04:14:50Z", "2026-09-27T06:02:29Z"
+
+    def _team(self, qb="Jacoby Brissett", status="Active", as_of="2026-09-26T12:12:29Z",
+              out=(), updated_at=None):
+        block = {
+            "qb": {"name": qb, "changed_from_last_week": False,
+                   "previous_name": None, "status": status, "as_of": as_of},
+            "out": [dict(o) for o in out], "doubtful": [], "ir": [],
+        }
+        if updated_at:
+            block["updated_at"] = updated_at
+        return block
+
+    def _run(self, old_block, new_block):
+        teams, changed = carry_updated_at({"ARI": old_block}, {"ARI": new_block},
+                                          self.NOW)
+        return teams["ARI"], changed
+
+    def test_qb_as_of_alone_is_not_a_change(self):
+        """The exact pair of blocks from the two real CI commits."""
+        old = self._team(as_of="2026-09-26T12:12:29Z", updated_at=self.OLD)
+        new = self._team(as_of="2026-09-27T06:01:58Z")
+        block, changed = self._run(old, new)
+        self.assertEqual(changed, [], "as_of alone must not mark the team changed")
+        self.assertEqual(block["updated_at"], self.OLD, "stamp must carry forward")
+
+    def test_the_fresh_as_of_still_rides_along(self):
+        old = self._team(as_of="2026-09-26T12:12:29Z", updated_at=self.OLD)
+        new = self._team(as_of="2026-09-27T06:01:58Z")
+        block, _ = self._run(old, new)
+        self.assertEqual(block["qb"]["as_of"], "2026-09-27T06:01:58Z")
+
+    def test_as_of_on_an_injury_entry_alone_is_not_a_change(self):
+        entry = {"name": "A Player", "pos": "CB", "reason": "Hamstring"}
+        old = self._team(out=[dict(entry, as_of="2026-09-26T12:00:00Z")],
+                         updated_at=self.OLD)
+        new = self._team(out=[dict(entry, as_of="2026-09-27T06:00:00Z")])
+        _, changed = self._run(old, new)
+        self.assertEqual(changed, [])
+
+    def test_a_real_qb_change_still_registers(self):
+        old = self._team(qb="Jacoby Brissett", updated_at=self.OLD)
+        new = self._team(qb="Kyler Murray", as_of="2026-09-27T06:01:58Z")
+        block, changed = self._run(old, new)
+        self.assertEqual(changed, ["ARI"])
+        self.assertEqual(block["updated_at"], self.NOW)
+
+    def test_a_status_change_still_registers(self):
+        old = self._team(status="Active", updated_at=self.OLD)
+        new = self._team(status="Out", as_of="2026-09-27T06:01:58Z")
+        _, changed = self._run(old, new)
+        self.assertEqual(changed, ["ARI"])
+
+    def test_a_changed_injury_reason_still_registers(self):
+        base = {"name": "A Player", "pos": "CB"}
+        old = self._team(out=[dict(base, reason="Hamstring", as_of="x")],
+                         updated_at=self.OLD)
+        new = self._team(out=[dict(base, reason="Achilles (Surgery)", as_of="y")])
+        _, changed = self._run(old, new)
+        self.assertEqual(changed, ["ARI"])
+
+    def test_a_new_absence_still_registers(self):
+        old = self._team(updated_at=self.OLD)
+        new = self._team(out=[{"name": "A Player", "pos": "CB",
+                               "reason": "Knee", "as_of": "y"}])
+        _, changed = self._run(old, new)
+        self.assertEqual(changed, ["ARI"])
+
+    def test_a_team_missing_from_a_populated_previous_file_registers(self):
+        teams, changed = carry_updated_at(
+            {"DAL": self._team(updated_at=self.OLD)},
+            {"ARI": self._team(), "DAL": self._team(updated_at=self.OLD)},
+            self.NOW)
+        self.assertEqual(changed, ["ARI"])
+
+    def test_first_write_reports_no_churn(self):
+        _, changed = carry_updated_at({}, {"ARI": self._team()}, self.NOW)
+        self.assertEqual(changed, [])
+
+    def test_substantive_strips_every_nested_as_of(self):
+        block = self._team(out=[{"name": "X", "pos": "CB", "reason": "Knee",
+                                 "as_of": "t"}], updated_at=self.OLD)
+        red = substantive(block)
+        self.assertNotIn("as_of", red["qb"])
+        self.assertNotIn("as_of", red["out"][0])
+        self.assertNotIn("updated_at", red)
+        self.assertEqual(red["qb"]["name"], "Jacoby Brissett")
+        self.assertEqual(red["out"][0]["reason"], "Knee")
+
+    def test_volatile_set_is_what_we_think_it_is(self):
+        self.assertEqual(VOLATILE_FIELDS, frozenset({"as_of", "updated_at"}))
 
 
 class TestWeekLookup(unittest.TestCase):
