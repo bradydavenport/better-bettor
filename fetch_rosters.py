@@ -459,22 +459,57 @@ def build_teams(qbs, qb_snap, prior_qbs, injuries):
     return teams
 
 
-def carry_updated_at(old_teams, new_teams, now):
-    """Stamp only the teams whose content actually changed.
+# Timestamps that move on the SOURCE's publish cadence rather than because any
+# personnel changed. nflverse rewrites its depth-chart snapshot about twice a day
+# and ESPN restamps injury rows, so `as_of` advances on almost every run with
+# identical names behind it.
+#
+# These are excluded from change detection, which the first CI runs proved is not
+# a theoretical concern: two commits two hours apart both listed all 32 teams as
+# changed, and all 32 differed ONLY in `qb.as_of`. Two teams had a real change.
+# Comparing them turned the ledger into the heartbeat it was built to avoid.
+#
+# They still ride along: a write triggered by something substantive carries the
+# fresh `as_of` with it. They just never trigger that write on their own.
+VOLATILE_FIELDS = frozenset({"as_of", "updated_at"})
 
-    Mirrors merge_forward() in fetch_lines.py: an untouched field keeps its old
+
+def substantive(block):
+    """A team block reduced to the parts whose change means something.
+
+    Recursive, because `as_of` appears on the qb object and on every entry in
+    out / doubtful / ir.
+    """
+    if isinstance(block, dict):
+        return {k: substantive(v) for k, v in block.items()
+                if k not in VOLATILE_FIELDS}
+    if isinstance(block, list):
+        return [substantive(v) for v in block]
+    return block
+
+
+def carry_updated_at(old_teams, new_teams, now):
+    """Stamp only the teams whose substantive content changed.
+
+    Mirrors merge_forward() in fetch_lines.py: an untouched team keeps its old
     timestamp, so `updated_at` answers "when did this team last move" rather
     than "when did the script last run". Returns (teams, changed_abbrs).
+
+    Comparison ignores VOLATILE_FIELDS. A run where nothing moved but the
+    sources restamped themselves reports no change, writes nothing, and so
+    commits nothing.
     """
     changed = []
+    first_write = not old_teams
     for abbr, block in new_teams.items():
         prev = (old_teams or {}).get(abbr) or {}
-        prev_body = {k: v for k, v in prev.items() if k != "updated_at"}
-        if prev_body == block:
+        if prev and substantive(prev) == substantive(block):
             block["updated_at"] = prev.get("updated_at") or now
         else:
             block["updated_at"] = now
-            if prev:
+            # A team missing from a non-empty previous file is a real change; on
+            # the very first write every team is "new" and none of it is news.
+            if not first_write:
                 changed.append(abbr)
     return new_teams, changed
 
@@ -498,7 +533,10 @@ NOTES = (
     "`eligible_week` next to a populated `expected_return` means the return is "
     "not expected this season. Every null means the source did not "
     "report it; nothing here is inferred or carried over from memory. Times are "
-    "UTC ISO-8601. Per-team `updated_at` is when that team's block last CHANGED, "
+    "UTC ISO-8601. Every `as_of` is the source's own publish stamp and moves on "
+    "the source's cadence, so it is excluded from change detection — it rides "
+    "along with a write but never causes one. Per-team `updated_at` is when that "
+    "team's block last SUBSTANTIVELY changed, "
     "so an old stamp means no reported movement, not a failed pull; "
     "`_meta.fetched_at` likewise marks when the current content first appeared "
     "(the file is only rewritten on change). Team keys match data/nfl.json."
