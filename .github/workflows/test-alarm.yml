@@ -22,20 +22,21 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: ubuntu-latest migrates to 26 on 2026-10-19, mid-season
     permissions:
       issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Fire a test alarm
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALARM_ASSIGNEE: ${{ github.repository_owner }}
         run: |
           cat > "$RUNNER_TEMP/firing.json" <<'JSON'
           [{"label": "alarm:test",
             "title": "[test] alarm channel check — safe to close",
-            "body": "This is a test of the alarm router, not a real alarm.\n\nIf you can see this issue, alarms can reach you: the workflow has `issues: write`, the label was created, and `gh issue create` works.\n\nThe same run closes it again unless `leave_open` was set.",
+            "body": "This is a test of the alarm router, not a real alarm.\n\n**Did this reach your phone?** That is the thing being tested. An earlier version created the issue perfectly and still sent no push, because nobody was assigned and nobody was @mentioned — so the run now fails unless both are true.\n\nIf no notification arrived even though you are assigned and mentioned above, the problem is in your GitHub notification settings rather than this pipeline: check Watching for the repo, and Notifications > Assigned/Mentions on mobile.\n\nThe same run closes it again unless `leave_open` was set.",
             "state": "firing", "throttle_hours": 0, "auto_close": true}]
           JSON
           python3 scripts/alarm.py --from-file "$RUNNER_TEMP/firing.json"
@@ -51,12 +52,25 @@ jobs:
             echo "::error::the alarm router did not create an issue — the alarm channel is BROKEN"
             exit 1
           fi
-          gh issue list --label alarm:test --state open
+          gh issue list --label alarm:test --state open --json number,assignees,body \
+            --jq '.[0] | "assignees: " + ([.assignees[].login] | join(",")) '
+          # An issue nobody is assigned to and nobody is mentioned in produces no
+          # push notification, which is the exact failure this test exists to catch.
+          ASSIGNED=$(gh issue list --label alarm:test --state open --json assignees \
+                       --jq '[.[0].assignees[].login] | length')
+          MENTIONED=$(gh issue list --label alarm:test --state open --json body \
+                        --jq '[.[0].body | test("@${{ github.repository_owner }}")] | map(select(.)) | length')
+          if [ "$ASSIGNED" -lt 1 ] || [ "$MENTIONED" -lt 1 ]; then
+            echo "::error::the test issue has assignees=$ASSIGNED mentions=$MENTIONED — it would NOT have notified you"
+            exit 1
+          fi
+          echo "assigned and @mentioned — this issue would have pushed"
 
       - name: Clear it again
         if: github.event.inputs.leave_open != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALARM_ASSIGNEE: ${{ github.repository_owner }}
         run: |
           cat > "$RUNNER_TEMP/clear.json" <<'JSON'
           [{"label": "alarm:test",

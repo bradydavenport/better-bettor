@@ -43,14 +43,14 @@ concurrency:
 
 jobs:
   pull:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: ubuntu-latest migrates to 26 on 2026-10-19, mid-season
     permissions:
       contents: write
       issues: write               # coverage alarms open/close issues
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -88,6 +88,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALARM_ASSIGNEE: ${{ github.repository_owner }}
         run: python3 scripts/alarm.py --from-file "$RUNNER_TEMP/pull-alarms.json"
 
       # Captured to $RUNNER_TEMP, which `git reset --hard` cannot touch.
@@ -102,7 +103,7 @@ jobs:
       # Before any push attempt, so a total push failure is still recoverable.
       - name: Upload outputs as an artifact
         if: steps.pull.outputs.pulled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pull-lines-outputs-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/out

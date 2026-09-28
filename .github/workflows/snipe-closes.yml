@@ -46,12 +46,12 @@ concurrency:
 
 jobs:
   snipe:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: ubuntu-latest migrates to 26 on 2026-10-19, mid-season
     permissions:
       contents: write
       issues: write               # alarms are routed to issues, not annotations
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The gate is the only step ~99% of runs execute, so it deliberately avoids
       # setup-python and pip: stdlib-only, on the runner's preinstalled python3.
@@ -75,6 +75,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALARM_ASSIGNEE: ${{ github.repository_owner }}
         run: python3 scripts/alarm.py --from-file "$RUNNER_TEMP/gate-alarms.json"
 
       # The gate writes sniped.json when it reports a newly missed close, so that
@@ -107,7 +108,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.gate.outputs.pull == 'true' && github.event.inputs.dry_run != 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -140,6 +141,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALARM_ASSIGNEE: ${{ github.repository_owner }}
         run: python3 scripts/alarm.py --from-file "$RUNNER_TEMP/pull-alarms.json"
 
       # Only after the pull succeeded. Marking first would record a close as
@@ -167,7 +169,7 @@ jobs:
       # spent by this point, so a total push failure must still be recoverable.
       - name: Upload outputs as an artifact
         if: steps.pull.outputs.pulled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: snipe-outputs-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/out
