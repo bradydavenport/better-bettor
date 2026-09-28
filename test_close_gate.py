@@ -21,6 +21,7 @@ from pathlib import Path
 
 from scripts.close_gate import (
     PRUNE_DAYS,
+    deadman_check,
     decide,
     in_horizon,
     load_state,
@@ -143,6 +144,69 @@ class TestMissedCloses(unittest.TestCase):
     def test_ancient_games_are_not_reported(self):
         _, _, missed = decide([ev(-60 * 24)], {}, NOW, 45, 15)
         self.assertEqual(missed, [])
+
+
+class TestDeadmanSwitch(unittest.TestCase):
+    """Has the DAILY pull stopped? Reads one local file; costs nothing.
+
+    Keyed on `_meta.last_pull['pull-lines']`, not `_meta.fetched_at`. The sniper
+    writes the same file, so fetched_at only says "something pulled" — and a
+    single overwritten `writer` field has the same blind spot.
+    """
+
+    def _nfl(self, td, last_pull, fetched_at="2026-09-27T16:59:00Z"):
+        p = Path(td) / "nfl.json"
+        p.write_text(json.dumps({"_meta": {"fetched_at": fetched_at,
+                                           "last_pull": last_pull}, "games": []}))
+        return p
+
+    def _ago(self, hours):
+        return (NOW - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def test_silent_when_the_daily_pull_is_recent(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = self._nfl(td, {"pull-lines": self._ago(25)})
+            self.assertIsNone(deadman_check(p, NOW))
+
+    def test_fires_when_the_daily_pull_is_stale(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = self._nfl(td, {"pull-lines": self._ago(27)})
+            msg = deadman_check(p, NOW)
+            self.assertIsNotNone(msg)
+            self.assertIn("pull-lines", msg)
+
+    def test_boundary_just_under_and_just_over(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertIsNone(deadman_check(self._nfl(td, {"pull-lines": self._ago(25.9)}), NOW))
+            self.assertIsNotNone(deadman_check(self._nfl(td, {"pull-lines": self._ago(26.1)}), NOW))
+
+    def test_a_fresh_SNIPER_pull_does_not_mask_a_dead_daily_pull(self):
+        """The exact case a `fetched_at` check would miss."""
+        with tempfile.TemporaryDirectory() as td:
+            # fetched_at is a minute old because the sniper just wrote it...
+            p = self._nfl(td, {"snipe-closes": self._ago(0.01)},
+                          fetched_at=self._ago(0.01))
+            msg = deadman_check(p, NOW)
+            self.assertIsNotNone(msg, "a fresh sniper pull must not vouch for "
+                                      "pull-lines")
+
+    def test_no_last_pull_map_is_an_alarm_not_silence(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertIsNotNone(deadman_check(self._nfl(td, {}), NOW))
+
+    def test_missing_file_is_an_alarm(self):
+        self.assertIsNotNone(deadman_check("/nonexistent/nfl.json", NOW))
+
+    def test_unparseable_file_is_an_alarm(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "nfl.json"
+            p.write_text("{not json")
+            self.assertIsNotNone(deadman_check(p, NOW))
+
+    def test_garbage_timestamp_is_an_alarm(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertIsNotNone(
+                deadman_check(self._nfl(td, {"pull-lines": "not a date"}), NOW))
 
 
 class TestStateFile(unittest.TestCase):

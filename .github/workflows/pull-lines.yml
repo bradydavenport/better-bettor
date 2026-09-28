@@ -16,8 +16,10 @@ on:
   schedule:
     # Two entries, same time, split by day so the step can vary the markets:
     # github.event.schedule carries the cron string that fired.
-    - cron: "0 13 * * 2"            # Tue -> the OPENER: all 3 markets (3 credits)
-    - cron: "0 13 * * 0,1,3,4,5,6"  # other days -> drift: ml + spread (2 credits)
+    # :07, not :00 — off the top of the hour so this does not collide with the
+    # sniper's */15 ticks for a runner slot every single day.
+    - cron: "7 13 * * 2"            # Tue -> the OPENER: all 3 markets (3 credits)
+    - cron: "7 13 * * 0,1,3,4,5,6"  # other days -> drift: ml + spread (2 credits)
   workflow_dispatch:
     inputs:
       markets:
@@ -32,8 +34,12 @@ on:
           - "all"
 
 concurrency:
-  group: odds-data              # shared with snipe-closes / pull-rosters: they all
-  cancel-in-progress: false     # push to main, so queue rather than race
+  # Per-workflow, NOT shared. A shared group only allows one pending run, so a
+  # */15 sniper queueing behind this would cancel a pending daily pull outright —
+  # silently, as a cancellation rather than a failure. Push contention is handled
+  # by the replay loop in the commit step, which is where it belongs.
+  group: pull-lines
+  cancel-in-progress: false
 
 jobs:
   pull:
@@ -49,6 +55,12 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      - name: Note the ledger size before the pull
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          stat -c%s data/history.jsonl 2>/dev/null > "$RUNNER_TEMP/out/offset" \
+            || echo 0 > "$RUNNER_TEMP/out/offset"
+
       # The credit guard was inert in CI for its whole life: Usage read a
       # gitignored file, so every run started at zero and check() never fired.
       # It now reads the committed data/usage.json; this proves it still blocks.
@@ -63,11 +75,30 @@ jobs:
           # Tuesday is the opener and takes totals too, the rest are drift pulls.
           MARKETS: >-
             ${{ github.event.inputs.markets
-                || (github.event.schedule == '0 13 * * 2' && 'all')
+                || (github.event.schedule == '7 13 * * 2' && 'all')
                 || 'ml,spread' }}
         run: |
           python fetch_lines.py --sport nfl --days 12 --drop-empty --merge \
-            --markets "$MARKETS" --out data/nfl.json --no-render --force
+            --markets "$MARKETS" --out data/nfl.json --no-render --force \
+            --writer pull-lines
+
+      # Captured to $RUNNER_TEMP, which `git reset --hard` cannot touch.
+      - name: Capture this run's outputs
+        if: steps.pull.outputs.pulled == 'true'
+        run: |
+          BEFORE=$(cat "$RUNNER_TEMP/out/offset")
+          tail -c +$((BEFORE + 1)) data/history.jsonl > "$RUNNER_TEMP/out/new_rows.jsonl"
+          cp data/nfl.json data/usage.json "$RUNNER_TEMP/out/"
+          echo "captured $(wc -l < "$RUNNER_TEMP/out/new_rows.jsonl") new ledger rows"
+
+      # Before any push attempt, so a total push failure is still recoverable.
+      - name: Upload outputs as an artifact
+        if: steps.pull.outputs.pulled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pull-lines-outputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/out
+          retention-days: 30
 
       # Gated on the pull actually happening. A run that made no API call — the
       # limiter refusing it, --status, --self-test-limiter — cannot reach `git add`
@@ -83,16 +114,29 @@ jobs:
             exit 0
           fi
           git commit -m "data: refresh NFL lines — $MARKETS ($(date -u +%FT%TZ))"
-          for i in 1 2 3; do
+          for attempt in 1 2 3; do
             if git push; then exit 0; fi
-            echo "push rejected, rebasing (attempt $i)"
-            git pull --rebase --autostash origin main || exit 1
+            echo "push $attempt rejected"
+            [ "$attempt" = 3 ] && break
+            git fetch origin
+            # The push may have LANDED and only reported failure.
+            if git merge-base --is-ancestor HEAD origin/main; then
+              echo "our commit is already on origin — the push did land"
+              exit 0
+            fi
+            git reset --hard origin/main
+            python3 scripts/replay_outputs.py \
+              --rows "$RUNNER_TEMP/out/new_rows.jsonl" \
+              --nfl  "$RUNNER_TEMP/out/nfl.json" \
+              --usage "$RUNNER_TEMP/out/usage.json"
+            git add data/nfl.json data/usage.json data/history.jsonl
+            git diff --cached --quiet || git commit -m "data: refresh NFL lines — $MARKETS (replay $attempt)"
           done
           exit 1
         env:
           MARKETS: >-
             ${{ github.event.inputs.markets
-                || (github.event.schedule == '0 13 * * 2' && 'all')
+                || (github.event.schedule == '7 13 * * 2' && 'all')
                 || 'ml,spread' }}
 
       - name: Note a skipped pull

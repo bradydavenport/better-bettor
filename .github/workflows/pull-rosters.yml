@@ -36,7 +36,9 @@ on:
         default: false
 
 concurrency:
-  group: odds-data              # shared with pull-lines / snipe-closes: all push to main
+  # Per-workflow: a shared group lets one workflow's queued run cancel another's
+  # pending run, and only one run may be pending per group.
+  group: pull-rosters
   cancel-in-progress: false
 
 jobs:
@@ -76,6 +78,9 @@ jobs:
           python fetch_rosters.py "${ARGS[@]}" 2>&1 | tee fetch.log
 
       - name: Commit if changed
+        env:
+          WEEK: ${{ github.event.inputs.week }}
+          FORCE: ${{ github.event.inputs.force_write }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -86,5 +91,33 @@ jobs:
             WEEK_LABEL=$(python -c "import json;print(json.load(open('data/rosters.json'))['_meta']['week'])")
             MOVED=$(sed -n 's/^\[changed\] //p' fetch.log | tail -1)
             git commit -m "data: rosters wk${WEEK_LABEL} — ${MOVED:-updated}"
-            git push
+            # No replay machinery here: re-running the fetcher is free and
+            # idempotent, so on a rejected push we just reset and redo it.
+            for attempt in 1 2 3; do
+              if git push; then exit 0; fi
+              echo "push $attempt rejected"
+              [ "$attempt" = 3 ] && break
+              git fetch origin
+              if git merge-base --is-ancestor HEAD origin/main; then
+                echo "our commit is already on origin"; exit 0
+              fi
+              git reset --hard origin/main
+              # Rebuilt here: shell state does not carry across steps, and the
+              # replay must use the same arguments the original pull did.
+              # Mirror the original invocation exactly. NOT --force-write by
+              # default: forcing would rewrite fresh timestamps and manufacture a
+              # commit even when origin already carries this change.
+              ARGS=(--out data/rosters.json)
+              if [ -n "$WEEK" ]; then
+                ARGS+=(--week "$WEEK")
+              fi
+              if [ "$FORCE" = "true" ]; then
+                ARGS+=(--force-write)
+              fi
+              python fetch_rosters.py "${ARGS[@]}" || exit 1
+              git add data/rosters.json
+              git diff --cached --quiet && exit 0
+              git commit -m "data: rosters wk${WEEK_LABEL} — ${MOVED:-updated} (replay $attempt)"
+            done
+            exit 1
           fi

@@ -37,8 +37,12 @@ on:
         default: false
 
 concurrency:
-  group: odds-data              # shared with the other data workflows: they all
-  cancel-in-progress: false     # commit to main, so let them queue, never race
+  # Per-workflow, NOT shared with pull-lines. Only one run may be pending per
+  # group, so a */15 cron sharing a group with the daily pull would cancel that
+  # pull's pending run — and a cancellation is silent, not a red failure. Push
+  # contention is handled by the replay loop below instead.
+  group: snipe-closes
+  cancel-in-progress: false
 
 jobs:
   snipe:
@@ -72,6 +76,13 @@ jobs:
         if: steps.gate.outputs.pull == 'true' && github.event.inputs.dry_run != 'true'
         run: pip install -r requirements.txt
 
+      - name: Note the ledger size before the pull
+        if: steps.gate.outputs.pull == 'true' && github.event.inputs.dry_run != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          stat -c%s data/history.jsonl 2>/dev/null > "$RUNNER_TEMP/out/offset" \
+            || echo 0 > "$RUNNER_TEMP/out/offset"
+
       # --force dips into the daily soft limit on purpose: a close cannot be
       # re-pulled later. The hard guards (monthly cap, api_remaining) still apply
       # and --force does not override those.
@@ -82,7 +93,8 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: |
           python fetch_lines.py --sport nfl --days 12 --drop-empty --merge \
-            --markets all --out data/nfl.json --no-render --force
+            --markets all --out data/nfl.json --no-render --force \
+            --writer snipe-closes
 
       # Only after the pull succeeded. Marking first would record a close as
       # captured even when the pull failed, and a missed close is unrecoverable.
@@ -93,7 +105,27 @@ jobs:
         run: |
           python3 scripts/close_gate.py --mark \
             --state data/sniped.json \
-            --horizon "${{ steps.gate.outputs.horizon }}"
+            --horizon "${{ steps.gate.outputs.horizon }}" \
+            --ids-out "$RUNNER_TEMP/out/sniped_ids.json"
+
+      # $RUNNER_TEMP survives `git reset --hard`, which the repo tree does not.
+      - name: Capture this run's outputs
+        if: steps.pull.outputs.pulled == 'true'
+        run: |
+          BEFORE=$(cat "$RUNNER_TEMP/out/offset")
+          tail -c +$((BEFORE + 1)) data/history.jsonl > "$RUNNER_TEMP/out/new_rows.jsonl"
+          cp data/nfl.json data/usage.json "$RUNNER_TEMP/out/"
+          echo "captured $(wc -l < "$RUNNER_TEMP/out/new_rows.jsonl") new ledger rows"
+
+      # Uploaded BEFORE any push attempt: 3 credits and a closing line are already
+      # spent by this point, so a total push failure must still be recoverable.
+      - name: Upload outputs as an artifact
+        if: steps.pull.outputs.pulled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: snipe-outputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/out
+          retention-days: 30
 
       - name: Commit
         if: steps.pull.outputs.pulled == 'true'
@@ -105,12 +137,29 @@ jobs:
             echo "nothing to commit"
             exit 0
           fi
-          git commit -m "data: close snipe — ${{ steps.gate.outputs.game_count }} game(s) @ ${{ steps.gate.outputs.horizon }}"
-          # Three data workflows push to main; history.jsonl is merge=union so
-          # concurrent appends reconcile instead of conflicting.
-          for i in 1 2 3; do
+          MSG="data: close snipe — ${{ steps.gate.outputs.game_count }} game(s) @ ${{ steps.gate.outputs.horizon }}"
+          git commit -m "$MSG"
+          # Push, then REPLAY onto whatever origin now holds. Not a rebase: only
+          # history.jsonl has a merge driver, so rebasing conflicts on nfl.json and
+          # sniped.json. reset-plus-replay cannot conflict at all.
+          # 3 pushes, 2 replays — no replay after the final attempt.
+          for attempt in 1 2 3; do
             if git push; then exit 0; fi
-            echo "push rejected, rebasing (attempt $i)"
-            git pull --rebase --autostash origin main || exit 1
+            echo "push $attempt rejected"
+            [ "$attempt" = 3 ] && break
+            git fetch origin
+            # The push may have LANDED and only reported failure.
+            if git merge-base --is-ancestor HEAD origin/main; then
+              echo "our commit is already on origin — the push did land"
+              exit 0
+            fi
+            git reset --hard origin/main
+            python3 scripts/replay_outputs.py \
+              --rows  "$RUNNER_TEMP/out/new_rows.jsonl" \
+              --ids   "$RUNNER_TEMP/out/sniped_ids.json" \
+              --nfl   "$RUNNER_TEMP/out/nfl.json" \
+              --usage "$RUNNER_TEMP/out/usage.json"
+            git add data/nfl.json data/usage.json data/history.jsonl data/sniped.json
+            git diff --cached --quiet || git commit -m "$MSG (replay $attempt)"
           done
           exit 1
