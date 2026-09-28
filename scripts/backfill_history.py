@@ -180,6 +180,7 @@ def market_rows(g, meta, commit_time):
                 "price": int(price),
                 "point": float(point) if point is not None else None,
                 "source": SOURCE,
+                "writer": SOURCE,
             })
     return rows, stamp_src
 

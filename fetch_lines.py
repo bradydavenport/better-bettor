@@ -177,6 +177,24 @@ def _now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def read_last_pull(out_path):
+    """The existing file's `_meta.last_pull` map, or {}.
+
+    Carried forward on every write so each writer only ever updates its own key.
+    A single "writer" field would be overwritten by whoever wrote last and could
+    never answer "when did pull-lines last run" — which is exactly what the
+    dead-man's switch needs, since the sniper writes this same file.
+    """
+    if not out_path:
+        return {}
+    try:
+        doc = json.loads(Path(out_path).read_text())
+        lp = (doc.get("_meta") or {}).get("last_pull")
+        return {k: v for k, v in lp.items()} if isinstance(lp, dict) else {}
+    except (FileNotFoundError, ValueError, AttributeError, TypeError):
+        return {}
+
+
 def set_output(key, value):
     """Tell the workflow what happened. Silent outside GitHub Actions.
 
@@ -648,12 +666,12 @@ ADAPTERS = {
 
 HISTORY_FIELDS = ("fetched_at", "last_update", "game_id", "commence_time",
                   "home", "away", "book", "market", "outcome", "price",
-                  "point", "source")
+                  "point", "source", "writer")
 # Present only when true, so absence means "an ordinary sportsbook".
 HISTORY_OPTIONAL_FIELDS = ("exchange",)
 
 
-def history_rows(raw, fetched_at, source="live"):
+def history_rows(raw, fetched_at, source="live", writer="manual"):
     """Flatten a raw The Odds API odds response into ledger rows.
 
     Timestamps: `last_update` is the MARKET-level stamp, not the bookmaker-level
@@ -688,6 +706,10 @@ def history_rows(raw, fetched_at, source="live"):
                         "price": int(price) if price is not None else None,
                         "point": out.get("point"),
                         "source": source,
+                        # which workflow produced this row. Replay dedupes on
+                        # (fetched_at, writer): two writers can legitimately pull
+                        # in the same second, so fetched_at alone is not identity.
+                        "writer": writer,
                     }
                     if bk.get("key") in EXCHANGE_BOOKS:
                         row["exchange"] = True
@@ -709,7 +731,7 @@ def append_history(path, rows):
     return len(rows)
 
 
-def log_history_safely(path, raw, fetched_at):
+def log_history_safely(path, raw, fetched_at, writer="manual"):
     """Append to the ledger, loudly, and never let it take the run down.
 
     The ledger is valuable but nfl.json is the product. Any failure here is
@@ -717,7 +739,7 @@ def log_history_safely(path, raw, fetched_at):
     the credits for this response.
     """
     try:
-        rows = history_rows(raw, fetched_at)
+        rows = history_rows(raw, fetched_at, writer=writer)
         n = append_history(path, rows)
         books = sorted({r["book"] for r in rows})
         print(f"[ok] history += {n} rows -> {path}  ({len(books)} books: "
@@ -973,6 +995,10 @@ def main():
                     help="skip writing the .csv / .html alongside --out")
     ap.add_argument("--raw", action="store_true",
                     help="dump the untouched API response instead of normalizing")
+    ap.add_argument("--writer", default="manual",
+                    help="who is pulling: recorded on every history row and in "
+                         "_meta.last_pull[writer], which the close gate's "
+                         "dead-man's switch reads (default: manual)")
     ap.add_argument("--no-history", action="store_true",
                     help="skip the append to the history ledger (see --history)")
     ap.add_argument("--history", default=None,
@@ -1022,6 +1048,9 @@ def main():
             return
 
     raw = adapter.fetch_raw(args.sport, days=args.days)
+    # One stamp for the whole run, so a ledger row and the _meta it was written
+    # alongside can be correlated exactly.
+    pulled_at = _now_iso()
 
     # Ledger first: straight off the raw response, before normalize() collapses
     # it to one book and before merge_forward() carries anything over. Wrapped so
@@ -1033,7 +1062,7 @@ def main():
             hist_path = Path(args.out).parent / "history.jsonl"
         else:
             hist_path = Path("data/history.jsonl")
-        log_history_safely(hist_path, raw, _now_iso())
+        log_history_safely(hist_path, raw, pulled_at, writer=args.writer)
         coverage_alarm(raw, adapter.books, hist_path)
 
     if metered:
@@ -1078,7 +1107,10 @@ def main():
             "sport": args.sport,
             "pulled_markets": markets.split(","),      # what THIS run fetched
             "markets_present": markets_present(games),  # what has a line in the file
-            "fetched_at": _now_iso(),
+            "fetched_at": pulled_at,
+            # per-writer: each writer touches only its own key, everything else
+            # is carried forward from the file we are replacing
+            "last_pull": {**read_last_pull(args.out), args.writer: pulled_at},
             "game_count": len(games),
             "window_days": args.days or None,
             "spread_convention": (

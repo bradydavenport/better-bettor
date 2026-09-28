@@ -218,6 +218,45 @@ def in_horizon(events, horizon, now):
     return out
 
 
+DEADMAN_HOURS = 26
+DEADMAN_WRITER = "pull-lines"
+
+
+def deadman_check(nfl_path, now, max_hours=DEADMAN_HOURS, writer=DEADMAN_WRITER):
+    """Has the daily line pull stopped? Reads a local file; costs nothing.
+
+    Checks `_meta.last_pull[writer]` specifically, NOT `_meta.fetched_at`. The
+    sniper writes nfl.json too, so fetched_at only says "something pulled" — it
+    would be refreshed by a Sunday snipe while the daily pull had been dead for
+    days. The per-writer map is what can answer the actual question.
+
+    Returns a message when the alarm should fire, else None.
+    """
+    try:
+        doc = json.loads(Path(nfl_path).read_text())
+    except FileNotFoundError:
+        return f"{nfl_path} does not exist — the line pipeline has never run"
+    except ValueError:
+        return f"{nfl_path} is not readable JSON — the line pipeline may be broken"
+
+    meta = (doc.get("_meta") or {}) if isinstance(doc, dict) else {}
+    last = (meta.get("last_pull") or {}).get(writer)
+    if not last:
+        # Pre-dates last_pull, or that writer has genuinely never run. Either way
+        # the switch cannot vouch for the pipeline, and silence would be a lie.
+        return (f"{nfl_path} has no _meta.last_pull['{writer}'] — cannot confirm "
+                f"the daily pull is alive (file predates writer tracking, or "
+                f"{writer} has not run since it was added)")
+    ts = _parse(last)
+    if not ts:
+        return f"_meta.last_pull['{writer}'] is not a readable timestamp: {last!r}"
+    age = (now - ts).total_seconds() / 3600
+    if age > max_hours:
+        return (f"{writer} last pulled {age:.1f}h ago ({last}), over the "
+                f"{max_hours}h limit — the daily line pull looks dead")
+    return None
+
+
 def set_output(key, value):
     """Hand a decision to the workflow. Silent when not running in Actions."""
     path = os.getenv("GITHUB_OUTPUT")
@@ -245,6 +284,16 @@ def main():
                     help="with --mark: the horizon the gate decided (ISO 8601). "
                          "Passing it through makes marking exactly reproduce the "
                          "decision instead of recomputing against a later clock.")
+    ap.add_argument("--ids-out", default=None,
+                    help="with --mark: also write the captured game_ids here, so "
+                         "a replay after a rejected push can re-apply them")
+    ap.add_argument("--nfl", default="data/nfl.json",
+                    help="file the dead-man's switch inspects (default: data/nfl.json)")
+    ap.add_argument("--deadman-hours", type=int, default=DEADMAN_HOURS,
+                    help=f"alarm when the daily pull is older than this "
+                         f"(default: {DEADMAN_HOURS})")
+    ap.add_argument("--no-deadman", action="store_true",
+                    help="skip the dead-man's switch")
     ap.add_argument("--now", default=None,
                     help="override the clock (ISO 8601) — for tests")
     ap.add_argument("--events-file", default=None,
@@ -253,8 +302,24 @@ def main():
 
     now = _parse(args.now) or _now()
 
+    # FIRST, before anything that can fail or return early. It reads one local
+    # file and is independent of /events — so an upstream outage, a missing API
+    # key or a closed gate must not silence it. It previously sat after the
+    # events fetch, which meant a /events outage muted the alarm for the daily
+    # pull as well: two unrelated failures collapsed into one silence.
+    if not args.no_deadman:
+        stale = deadman_check(args.nfl, now, args.deadman_hours)
+        if stale:
+            print(f"::error::dead-man's switch: {stale}")
+            print(f"[alarm] {stale}", file=sys.stderr)
+
     if args.events_file:
-        events = json.loads(Path(args.events_file).read_text())
+        try:
+            events = json.loads(Path(args.events_file).read_text())
+        except (OSError, ValueError) as e:
+            print(f"::warning::close gate: --events-file unreadable: {e}")
+            set_output("pull", "false")
+            return 0
     else:
         key = _api_key()
         if not key:
@@ -290,6 +355,16 @@ def main():
                 "matchup": f"{e.get('away_team')} @ {e.get('home_team')}",
                 "sniped_at": _iso(now),
             }
+        if args.ids_out:
+            Path(args.ids_out).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.ids_out).write_text(json.dumps({
+                e["id"]: {
+                    "commence_time": e.get("commence_time"),
+                    "matchup": f"{e.get('away_team')} @ {e.get('home_team')}",
+                    "sniped_at": _iso(now),
+                } for e in captured}, indent=2) + "\n")
+            print(f"[ok] wrote {len(captured)} id(s) to {args.ids_out} for replay",
+                  file=sys.stderr)
         kept, pruned = save_state(args.state, sniped, now)
         print(f"[ok] marked {len(captured)} game(s) sniped through {_iso(h)} "
               f"-> {args.state} ({kept} tracked"

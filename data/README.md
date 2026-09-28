@@ -46,10 +46,22 @@ It is what closing-line value is computed from.
 | `price` | American odds |
 | `point` | spread/total number, `null` for `h2h`. **API convention: negative = favored** — the opposite sign from `nfl.json`'s `spread` field |
 | `source` | `live`, or `git_backfill` for rows reconstructed from git |
+| `writer` | which workflow produced the row (`pull-lines`, `snipe-closes`, `git_backfill`, `manual`). Replay dedupes on `(fetched_at, writer)` — two writers can legitimately pull in the same second, so `fetched_at` alone is not an identity. Rows written before this field existed have no `writer`; the ledger is append-only so they were not rewritten. |
 | `exchange` | `true` on `kalshi` / `novig` only. Their prices are peer-to-peer and almost certainly exclude platform fees, so they are not directly comparable to a book's vig-inclusive line. **Flag only — no price is adjusted**, because that needs a fee schedule we don't have. Absent means an ordinary sportsbook. |
 
 `.gitattributes` sets `merge=union` on this file so concurrent appends from three
 workflows reconcile instead of conflicting.
+
+### `nfl.json._meta.last_pull`
+
+A per-writer map, `{"pull-lines": ts, "snipe-closes": ts}`, carried forward on
+every write — each writer touches only its own key. The close gate's dead-man's
+switch reads `last_pull["pull-lines"]` and raises a CI `::error::` past 26h.
+
+It has to be a map. `_meta.fetched_at` — or a single `writer` field — records
+only whoever wrote last, so a Sunday snipe would refresh it while the daily pull
+had been dead for days. The map is the only shape that can answer "when did
+*pull-lines* last run".
 
 The backfill file recovers **Pinnacle only**, because Pinnacle is the only book
 that was ever pulled before the ledger existed. It invents nothing for the others,
