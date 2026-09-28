@@ -18,9 +18,16 @@ lines.html
 data/*.csv
 data/*.html
 
-# local private credit counter (day tally, --force buffer). The public,
-# durable one is data/usage.json.
+# Retired. There used to be a private .usage.json here holding the real credit
+# counters, which is exactly why the limiter was inert in CI — the numbers CI
+# needed were the ones git never saw. data/usage.json is now the single ledger,
+# public counters and private ones together. Still ignored so a stale local copy
+# can never come back and fight it.
 .usage.json
+
+# derived, rebuilt from git on demand by scripts/backfill_history.py — the real
+# append-only ledger is data/history.jsonl, which IS tracked
+# (data/history_backfill.jsonl is committed once as a snapshot, then regenerated)
 
 # roster fetcher run log (the workflow tees to it to build the commit subject)
 fetch.log

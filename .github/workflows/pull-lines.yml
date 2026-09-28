@@ -46,6 +46,12 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # The credit guard was inert in CI for its whole life: Usage read a
+      # gitignored file, so every run started at zero and check() never fired.
+      # It now reads the committed data/usage.json; this proves it still blocks.
+      - name: Verify the credit limiter blocks
+        run: python fetch_lines.py --self-test-limiter
+
       - name: Pull NFL lines
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
@@ -59,7 +65,7 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/nfl.json data/usage.json
+          git add data/nfl.json data/usage.json data/history.jsonl
           if git diff --cached --quiet; then
             echo "no changes"
           else

@@ -72,6 +72,7 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
@@ -195,11 +196,25 @@ def _abbr(sport, team):
 
 MONTHLY_CAP = 500
 DEFAULT_DAILY_LIMIT = int(os.getenv("ODDS_DAILY_LIMIT", "15"))
-USAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".usage.json")
+
+# THE committed ledger. This used to be a gitignored .usage.json next to the
+# script, which meant every CI run started from zero counters and check() could
+# never fire there — the guard was decorative in the only place it mattered.
+# One tracked file, loaded and saved by CI and locally alike, fixes that.
+#
+# It holds the public snapshot at the top level (unchanged shape, so anything
+# fetching data/usage.json by raw URL keeps working) plus the private running
+# counters under "_counters".
+#
+# One ledger tracks ONE API key. If CI's ODDS_API_KEY secret differs from the
+# local .env key, the numbers will fight each other — the api_* fields come from
+# whichever key called last.
+USAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "data", "usage.json")
 
 
 class Usage:
-    """Local credit counter, persisted to .usage.json next to this script."""
+    """Credit counter, persisted to the committed data/usage.json."""
 
     def __init__(self, path=USAGE_FILE):
         self.path = path
@@ -211,10 +226,34 @@ class Usage:
         }
         try:
             with open(self.path) as f:
-                self.data.update(json.load(f))
+                stored = json.load(f)
         except (FileNotFoundError, ValueError):
-            pass
+            stored = None
+        if stored:
+            self.data.update(self._counters_from(stored))
         self._rollover()
+
+    @staticmethod
+    def _counters_from(stored):
+        """Recover counters from a ledger file.
+
+        Prefers the "_counters" block. Falls back to deriving them from the
+        public snapshot fields, so the first run on this code picks up the real
+        numbers already committed instead of restarting at zero.
+        """
+        if isinstance(stored.get("_counters"), dict):
+            return stored["_counters"]
+        return {
+            "day": stored.get("today") or "",
+            "day_credits": stored.get("today_credits") or 0,
+            "month": stored.get("month") or "",
+            "month_credits": stored.get("credits_used") or 0,
+            "month_force_credits": stored.get("buffer_used") or 0,
+            "api_remaining": stored.get("credits_remaining"),
+            "api_used": stored.get("credits_used"),
+            "last_call": stored.get("last_call"),
+            "last_cost": stored.get("last_cost"),
+        }
 
     def _rollover(self):
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -226,9 +265,16 @@ class Usage:
             self.data["month_credits"] = 0
             self.data["month_force_credits"] = 0
 
-    def save(self):
+    def save(self, daily_limit=DEFAULT_DAILY_LIMIT):
+        """Write the one ledger: public snapshot + private counters."""
+        payload = self.snapshot(daily_limit)
+        payload["_counters"] = self.data
+        d = os.path.dirname(os.path.abspath(self.path))
+        if d:
+            os.makedirs(d, exist_ok=True)
         with open(self.path, "w") as f:
-            json.dump(self.data, f, indent=2)
+            json.dump(payload, f, indent=2)
+        return payload
 
     def check(self, cost, daily_limit, force=False):
         d = self.data
@@ -237,7 +283,8 @@ class Usage:
                      f"({d['month_credits']} used). Resets on the 1st — no charge.")
         if d["api_remaining"] is not None and d["api_remaining"] < cost:
             sys.exit(f"[blocked] API reports only {d['api_remaining']} credits left "
-                     f"this month (as of last call).")
+                     f"this month (as of last call). --force does NOT override "
+                     f"this; it is the API's own number, not our estimate.")
         if not force and d["day_credits"] + cost > daily_limit:
             sys.exit(
                 f"[blocked] daily limit {daily_limit} would be exceeded "
@@ -246,7 +293,8 @@ class Usage:
                 f"--status to see counters."
             )
 
-    def record(self, cost, force=False, api_remaining=None, api_used=None):
+    def record(self, cost, force=False, api_remaining=None, api_used=None,
+               daily_limit=DEFAULT_DAILY_LIMIT):
         d = self.data
         d["day_credits"] += cost
         d["month_credits"] += cost
@@ -254,13 +302,15 @@ class Usage:
             d["month_force_credits"] += cost
         if api_remaining is not None:
             d["api_remaining"] = api_remaining
-            # the API's own tally is authoritative when we have it
-            d["month_credits"] = max(d["month_credits"], MONTHLY_CAP - api_remaining)
+            # The API's own tally IS the truth, not a tie-break. `max()` used to
+            # be used here, which meant a local counter that had drifted high
+            # could never come back down — including after a quota window reset.
+            d["month_credits"] = MONTHLY_CAP - api_remaining
         if api_used is not None:
             d["api_used"] = api_used
         d["last_call"] = _now_iso()
         d["last_cost"] = cost
-        self.save()
+        self.save(daily_limit)
 
     def snapshot(self, daily_limit):
         """Public, durable view of the counter — written to data/usage.json and
@@ -311,6 +361,34 @@ class Usage:
 
 
 # --------------------------------------------------------------------------- #
+# book roster
+# --------------------------------------------------------------------------- #
+#
+# Pinnacle is the BENCHMARK book: it alone drives data/nfl.json and everything
+# downstream of it. The rest are logged to data/history.jsonl only, for closing-
+# line value against the books Brady actually bets.
+#
+# Billing, quoted from the v4 docs: "Every group of 10 bookmakers is the
+# equivalent of 1 region." cost = markets x regions, so 10 books cost exactly
+# what 1 book costs. Verified against a real response: 10 books x markets=h2h
+# returned `x-requests-last: 1`. Adding the 9 extra books was free.
+#
+# KEEP THIS LIST AT 10 OR FEWER. An 11th book silently doubles every pull.
+BENCHMARK_BOOK = "pinnacle"
+EXTRA_BOOKS = (
+    "draftkings", "fanduel", "betmgm", "betrivers", "hardrockbet",
+    "espnbet",      # theScore Bet / ESPN Bet — one key, the docs list both names
+    "ballybet", "novig", "kalshi",
+)
+# Deliberately absent: Caesars (`williamhill_us`) and Fanatics (`fanatics`) are
+# both flagged "Only available on paid subscriptions" in the docs. Requesting
+# williamhill_us on the free tier is accepted but returns 0 of 16 games — a
+# silent empty, not an error. Do not re-add them without a paid plan.
+LOGGED_BOOKS = (BENCHMARK_BOOK,) + EXTRA_BOOKS
+assert len(LOGGED_BOOKS) <= 10, "over 10 books doubles the credit cost per pull"
+
+
+# --------------------------------------------------------------------------- #
 # adapters
 # --------------------------------------------------------------------------- #
 
@@ -325,14 +403,21 @@ class TheOddsAPIAdapter:
     BASE = "https://api.the-odds-api.com/v4"
     MARKETS = "h2h,spreads,totals"
 
-    def __init__(self, api_key, book="pinnacle", markets=None):
+    def __init__(self, api_key, book="pinnacle", markets=None, books=None):
         if not api_key:
             sys.exit("ODDS_API_KEY not set (put it in .env or export it).")
         self.api_key = api_key
+        # `book` is the benchmark: the only one normalize() reads, so the only
+        # one that reaches data/nfl.json. `books` is the full roster we request
+        # and log. The benchmark is always in the roster.
         self.book = book
+        roster = list(books) if books else [book]
+        if book not in roster:
+            roster.insert(0, book)
+        self.books = roster
         self.markets = markets or self.MARKETS
-        # cost = (# markets) x (# regions); we use one region
-        self.estimated_cost = len(self.markets.split(","))
+        # cost = (# markets) x (# regions), and <=10 books == 1 region
+        self.estimated_cost = len(self.markets.split(",")) * ((len(roster) + 9) // 10)
         self.last_cost = None
         self.api_remaining = None
         self.api_used = None
@@ -357,7 +442,7 @@ class TheOddsAPIAdapter:
     def fetch_raw(self, sport, days=0):
         api_key = SPORT_KEYS[sport][0]
         params = dict(
-            bookmakers=self.book,
+            bookmakers=",".join(self.books),
             regions="eu",  # Pinnacle lives here; ignored when `bookmakers` is set
             markets=self.markets,
             oddsFormat="american",
@@ -375,6 +460,10 @@ class TheOddsAPIAdapter:
         for ev in raw:
             home = ev.get("home_team")
             away = ev.get("away_team")
+            # The response now carries up to 10 books. This picks the benchmark
+            # by key and ignores the rest, so nfl.json and everything downstream
+            # of it are unchanged by the wider pull. Keys are unique per event,
+            # so the match is exact, not "whichever came first".
             books = ev.get("bookmakers", [])
             book = next((b for b in books if b.get("key") == self.book), None)
 
@@ -512,8 +601,184 @@ ADAPTERS = {
 
 
 # --------------------------------------------------------------------------- #
+# append-only history log
+# --------------------------------------------------------------------------- #
+#
+# data/history.jsonl is the ledger: one JSON object per line, per book x game x
+# market x outcome, written from the RAW response before normalize() or
+# merge_forward() touch anything. Every pull appends; nothing is ever rewritten,
+# deduped or sorted in place. Repeat rows with no movement are data — they prove
+# the line held. Downstream readers dedupe on (book, game_id, market, outcome,
+# last_update) if they want distinct quotes.
+#
+# This is an all-books record. nfl.json stays Pinnacle-only; see LOGGED_BOOKS.
+
+HISTORY_FIELDS = ("fetched_at", "last_update", "game_id", "commence_time",
+                  "home", "away", "book", "market", "outcome", "price",
+                  "point", "source")
+
+
+def history_rows(raw, fetched_at, source="live"):
+    """Flatten a raw The Odds API odds response into ledger rows.
+
+    Timestamps: `last_update` is the MARKET-level stamp, not the bookmaker-level
+    one — the v4 docs deprecate the latter. Falls back to the bookmaker stamp
+    when a market omits it, then to null.
+
+    `point` is the API's own value, untouched: for spreads that is the outcome
+    team's handicap (negative == favored), which is the OPPOSITE sign convention
+    from nfl.json's `spread` field. The ledger keeps the API convention so it can
+    be compared against other sources without unwinding our normalization.
+    """
+    rows = []
+    for ev in raw or []:
+        game_id = ev.get("id")
+        commence = ev.get("commence_time")
+        home, away = ev.get("home_team"), ev.get("away_team")
+        for bk in ev.get("bookmakers") or []:
+            book_stamp = bk.get("last_update")
+            for mkt in bk.get("markets") or []:
+                for out in mkt.get("outcomes") or []:
+                    price = out.get("price")
+                    rows.append({
+                        "fetched_at": fetched_at,
+                        "last_update": mkt.get("last_update") or book_stamp,
+                        "game_id": game_id,
+                        "commence_time": commence,
+                        "home": home,
+                        "away": away,
+                        "book": bk.get("key"),
+                        "market": mkt.get("key"),
+                        "outcome": out.get("name"),
+                        "price": int(price) if price is not None else None,
+                        "point": out.get("point"),
+                        "source": source,
+                    })
+    return rows
+
+
+def append_history(path, rows):
+    """Append rows to the ledger. Returns the count written.
+
+    Append mode only — never read-modify-write, so a crash mid-write can cost at
+    most one partial line rather than the whole ledger.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+    return len(rows)
+
+
+def log_history_safely(path, raw, fetched_at):
+    """Append to the ledger, loudly, and never let it take the run down.
+
+    The ledger is valuable but nfl.json is the product. Any failure here is
+    reported and swallowed so the pull still writes its file — we already paid
+    the credits for this response.
+    """
+    try:
+        rows = history_rows(raw, fetched_at)
+        n = append_history(path, rows)
+        books = sorted({r["book"] for r in rows})
+        print(f"[ok] history += {n} rows -> {path}  ({len(books)} books: "
+              f"{', '.join(books)})", file=sys.stderr)
+        return n
+    except Exception as e:                       # noqa: BLE001 - deliberate
+        print(f"[warn] history append FAILED ({type(e).__name__}: {e}) — "
+              f"continuing; nfl.json is unaffected and this pull's rows are lost",
+              file=sys.stderr)
+        return 0
+
+
+# --------------------------------------------------------------------------- #
 # cli
 # --------------------------------------------------------------------------- #
+
+
+def self_test_limiter():
+    """Prove check() actually blocks. No API calls, no credits.
+
+    This exists because the guard was silently inert in CI for the whole of its
+    life: Usage read a gitignored file, so every workflow run began at zero
+    credits and check() waved everything through. A regression to that state
+    looks like nothing at all from the outside, so it needs a test that fails
+    loudly. Run: python fetch_lines.py --self-test-limiter
+    """
+    import tempfile
+
+    results = []
+
+    def case(name, ledger, cost, limit, force, expect_block):
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "usage.json")
+            with open(path, "w") as f:
+                json.dump(ledger, f)
+            u = Usage(path)
+            # freeze the rollover: the fixture's day/month must survive so the
+            # counters under test are the ones check() actually sees
+            u.data["day"] = u.data["month"] = None
+            u.data.update(ledger.get("_counters", {}))
+            blocked = False
+            try:
+                u.check(cost, limit, force=force)
+            except SystemExit:
+                blocked = True
+            ok = blocked == expect_block
+            results.append((ok, name,
+                            f"expected {'BLOCK' if expect_block else 'PASS'}, "
+                            f"got {'BLOCK' if blocked else 'PASS'}"))
+
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def ledger(**kw):
+        c = {"day": today, "day_credits": 0, "month": month, "month_credits": 0,
+             "month_force_credits": 0, "api_remaining": None, "api_used": None,
+             "last_call": None, "last_cost": None}
+        c.update(kw)
+        return {"_counters": c}
+
+    # the regression that started all this: a fresh, counter-less ledger
+    case("empty ledger allows a normal pull", {}, 2, 15, False, False)
+    case("healthy ledger allows a normal pull",
+         ledger(month_credits=60, api_remaining=440), 2, 15, False, False)
+
+    # the monthly cap is a hard wall, force or not
+    case("monthly cap blocks",
+         ledger(month_credits=MONTHLY_CAP - 1), 2, 15, False, True)
+    case("monthly cap blocks even with --force",
+         ledger(month_credits=MONTHLY_CAP - 1), 2, 15, True, True)
+
+    # the API's own number outranks our estimate
+    case("api_remaining below cost blocks",
+         ledger(month_credits=0, api_remaining=1), 2, 15, False, True)
+    case("api_remaining blocks even with --force",
+         ledger(month_credits=0, api_remaining=1), 2, 15, True, True)
+    case("api_remaining exactly covering cost passes",
+         ledger(month_credits=0, api_remaining=2), 2, 15, False, False)
+
+    # the daily limit is the soft one --force is meant to bypass
+    case("daily limit blocks",
+         ledger(day_credits=15, api_remaining=400), 2, 15, False, True)
+    case("daily limit yields to --force",
+         ledger(day_credits=15, api_remaining=400), 2, 15, True, False)
+
+    # a CI-shaped ledger: counters recovered from the PUBLIC fields only
+    case("public-only ledger is still read (no _counters block)",
+         {"month": month, "credits_used": 499, "credits_remaining": 1,
+          "today": today, "today_credits": 0, "buffer_used": 0},
+         2, 15, False, True)
+
+    width = max(len(n) for _, n, _ in results)
+    for ok, name, detail in results:
+        print(f"  {'PASS' if ok else 'FAIL'}  {name:<{width}}  ({detail})")
+    failed = [n for ok, n, _ in results if not ok]
+    print(f"\n{len(results) - len(failed)}/{len(results)} passed")
+    if failed:
+        sys.exit(f"[FAIL] limiter guard is not firing: {', '.join(failed)}")
+    print("[ok] limiter blocks on monthly cap, api_remaining and daily limit")
 
 
 def main():
@@ -545,13 +810,29 @@ def main():
                          "monthly buffer; still hard-stops at the 500 cap)")
     ap.add_argument("--status", action="store_true",
                     help="print the usage counter and exit (no API call)")
+    ap.add_argument("--self-test-limiter", action="store_true",
+                    help="prove check() still blocks when the counters say we "
+                         "are over budget, then exit (no API call, no credits)")
     ap.add_argument("--out", default=None,
                     help="write normalized JSON here (default: stdout)")
     ap.add_argument("--no-render", action="store_true",
                     help="skip writing the .csv / .html alongside --out")
     ap.add_argument("--raw", action="store_true",
                     help="dump the untouched API response instead of normalizing")
+    ap.add_argument("--no-history", action="store_true",
+                    help="skip the append to the history ledger (see --history)")
+    ap.add_argument("--history", default=None,
+                    help="ledger path (default: history.jsonl beside --out, or "
+                         "data/history.jsonl when writing to stdout)")
+    ap.add_argument("--benchmark-book", default=None,
+                    help=f"the one book that drives --out and everything "
+                         f"downstream (default: {BENCHMARK_BOOK}). The other "
+                         f"books in LOGGED_BOOKS are logged only.")
     args = ap.parse_args()
+
+    if args.self_test_limiter:
+        self_test_limiter()
+        return
 
     usage = Usage()
 
@@ -562,7 +843,12 @@ def main():
     markets = parse_markets(args.markets)
 
     cls, env_var, default_book = ADAPTERS[args.source]
-    adapter = cls(os.getenv(env_var), book=args.book or default_book, markets=markets)
+    # The Odds API pull requests the whole book roster for the ledger; every
+    # other source keeps its single-book behaviour.
+    roster = LOGGED_BOOKS if args.source == "theoddsapi" else None
+    benchmark = args.benchmark_book or args.book or default_book
+    adapter = cls(os.getenv(env_var), book=benchmark, markets=markets,
+                  books=roster)
 
     metered = args.source == "theoddsapi"
     if metered:
@@ -570,11 +856,24 @@ def main():
 
     raw = adapter.fetch_raw(args.sport, days=args.days)
 
+    # Ledger first: straight off the raw response, before normalize() collapses
+    # it to one book and before merge_forward() carries anything over. Wrapped so
+    # it can never cost us the pull we just paid for.
+    if not args.no_history and args.source == "theoddsapi":
+        if args.history:
+            hist_path = Path(args.history)
+        elif args.out:
+            hist_path = Path(args.out).parent / "history.jsonl"
+        else:
+            hist_path = Path("data/history.jsonl")
+        log_history_safely(hist_path, raw, _now_iso())
+
     if metered:
         usage.record(adapter.last_cost or adapter.estimated_cost,
                      force=args.force,
                      api_remaining=adapter.api_remaining,
-                     api_used=adapter.api_used)
+                     api_used=adapter.api_used,
+                     daily_limit=args.daily_limit)
         d = usage.data
         print(f"[usage] today {d['day_credits']}/{args.daily_limit}  "
               f"month {d['month_credits']}/{MONTHLY_CAP}  "
@@ -587,7 +886,6 @@ def main():
         games = adapter.normalize(args.sport, raw)
 
         if args.merge and args.out:
-            from pathlib import Path
             try:
                 prev = json.loads(Path(args.out).read_text())
                 old_games = prev["games"] if isinstance(prev, dict) else prev
@@ -630,16 +928,21 @@ def main():
 
     text = json.dumps(out_obj, indent=2)
     if args.out:
-        from pathlib import Path
         p = Path(args.out)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text + "\n")
         print(f"[ok] wrote {p}", file=sys.stderr)
 
         if metered:
+            # record() already saved the canonical ledger (USAGE_FILE). Only drop
+            # a sibling copy when --out lives somewhere else, and never let that
+            # copy shadow the ledger — one file is the counter, by design.
             up = p.parent / "usage.json"
-            up.write_text(json.dumps(usage.snapshot(args.daily_limit), indent=2) + "\n")
-            print(f"[ok] wrote {up}", file=sys.stderr)
+            if os.path.abspath(up) != os.path.abspath(USAGE_FILE):
+                up.write_text(json.dumps(usage.snapshot(args.daily_limit), indent=2) + "\n")
+                print(f"[ok] wrote {up} (copy; ledger is {USAGE_FILE})", file=sys.stderr)
+            else:
+                print(f"[ok] ledger {up}", file=sys.stderr)
 
         if not args.raw and not args.no_render:
             import render
