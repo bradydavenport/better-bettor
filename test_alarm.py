@@ -45,6 +45,8 @@ class FakeGh:
                             "comments": []})
         self.created.append((title, label, body))
         self.next += 1
+        # gh prints the new issue's URL; the router parses the number out of it
+        return f"https://github.com/o/r/issues/{self.next - 1}"
 
     def comment(self, number, body):
         self.comments.append((number, body))
@@ -188,6 +190,41 @@ class TestNotification(unittest.TestCase):
         self.assertEqual(mention("bradydavenport"), "@bradydavenport\n\n")
         self.assertEqual(mention(None), "")
         self.assertEqual(mention(""), "")
+
+
+class TestIssueNumberReporting(unittest.TestCase):
+    """The caller needs the exact number, because `gh issue list` lags a write."""
+
+    def test_number_parsed_from_gh_output(self):
+        from scripts.alarm import number_from
+        self.assertEqual(
+            number_from("https://github.com/bradydavenport/better-bettor/issues/7"), 7)
+        self.assertEqual(number_from("noise\nhttps://x/issues/12\n"), 12)
+        self.assertIsNone(number_from(""))
+        self.assertIsNone(number_from("https://x/issues/notanumber"))
+
+    def test_create_reports_the_new_number(self):
+        gh = FakeGh()
+        out = {}
+        handle(gh, rec(), gh.issues, NOW, out)
+        self.assertEqual(out["issue_number"], 1)
+
+    def test_close_reports_the_closed_number(self):
+        gh = FakeGh([issue(4, "alarm:x", NOW - timedelta(hours=5))])
+        out = {}
+        handle(gh, rec(state="clear"), gh.issues, NOW, out)
+        self.assertEqual(out["closed_issue_number"], 4)
+
+    def test_comment_reports_the_number(self):
+        gh = FakeGh([issue(9, "alarm:x", NOW - timedelta(hours=30))])
+        out = {}
+        handle(gh, rec(), gh.issues, NOW, out)
+        self.assertEqual(out["issue_number"], 9)
+
+    def test_outputs_is_optional(self):
+        gh = FakeGh()
+        handle(gh, rec(), gh.issues, NOW)      # must not raise without a collector
+        self.assertEqual(len(gh.created), 1)
 
 
 class TestRobustness(unittest.TestCase):

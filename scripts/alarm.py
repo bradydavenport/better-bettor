@@ -64,6 +64,16 @@ DEFAULT_THROTTLE_HOURS = 24
 LABEL_COLOR = "d73a4a"
 
 
+def number_from(out):
+    """The issue number in gh's output. gh prints the new issue's URL on create."""
+    for tok in (out or "").split():
+        if "/issues/" in tok:
+            tail = tok.rstrip("/").rsplit("/", 1)[-1]
+            if tail.isdigit():
+                return int(tail)
+    return None
+
+
 def mention(assignee):
     """An @mention line, or nothing when no assignee is configured.
 
@@ -157,8 +167,8 @@ class Gh:
                 "--body-file", "-"]
         if self.assignee:
             try:
-                return self._run(args + ["--assignee", self.assignee],
-                                 stdin=body, mutating=True)
+                out = self._run(args + ["--assignee", self.assignee],
+                                stdin=body, mutating=True)
             except GhError as e:
                 # gh refuses an assignee who is not an assignable collaborator.
                 # An un-assigned alarm still beats no alarm, so fall back rather
@@ -166,6 +176,8 @@ class Gh:
                 print(f"::warning::alarm router: could not assign "
                       f"{self.assignee} ({e}); opening it unassigned",
                       file=sys.stderr)
+            else:
+                return out
         return self._run(args, stdin=body, mutating=True)
 
     def comment(self, number, body):
@@ -189,8 +201,17 @@ def find_open(issues, label):
     return None
 
 
-def handle(gh, rec, issues, now):
-    """Apply one alarm record. Returns a one-line description of what happened."""
+def handle(gh, rec, issues, now, outputs=None):
+    """Apply one alarm record. Returns a one-line description of what happened.
+
+    `outputs` collects the issue numbers touched. A caller that just created or
+    closed an issue cannot trust `gh issue list` to show it — GitHub's search index
+    lags the write by a second or more — so it needs the exact number to poll
+    instead of re-listing.
+    """
+    def note(key, value):
+        if outputs is not None and value is not None:
+            outputs[key] = value
     label = rec.get("label")
     state = (rec.get("state") or "firing").lower()
     title = rec.get("title") or f"[alarm] {label}"
@@ -214,15 +235,22 @@ def handle(gh, rec, issues, now):
                    f"{mention(gh.assignee)}Recovered at {_iso(now)}{dur}."
                    f"\n\n{body}".strip())
         gh.close(existing["number"])
+        note("closed_issue_number", existing["number"])
+        print(f"issue_number={existing['number']}")
         return f"{label}: RECOVERED -> closed #{existing['number']}{dur}"
 
     # firing
     if not existing:
         gh.ensure_label(label, title)
-        gh.create_issue(title,
-                        f"{mention(gh.assignee)}{body}\n\n_Opened by the alarm "
-                        f"router at {_iso(now)}._", label)
-        return f"{label}: FIRING -> opened a new issue"
+        out = gh.create_issue(title,
+                              f"{mention(gh.assignee)}{body}\n\n_Opened by the "
+                              f"alarm router at {_iso(now)}._", label)
+        num = number_from(out)
+        note("issue_number", num)
+        if num:
+            print(f"issue_number={num}")
+        return f"{label}: FIRING -> opened issue #{num}" if num else \
+               f"{label}: FIRING -> opened a new issue"
 
     n = existing["number"]
     if throttle:
@@ -233,6 +261,8 @@ def handle(gh, rec, issues, now):
                     f"(< {throttle}h) — staying quiet")
     gh.comment(n, f"{mention(gh.assignee)}Still firing at {_iso(now)}."
                   f"\n\n{body}".strip())
+    note("issue_number", n)
+    print(f"issue_number={n}")
     return f"{label}: still firing -> commented on #{n}"
 
 
@@ -291,12 +321,22 @@ def main():
     firing = sum(1 for r in records if (r.get("state") or "firing") == "firing")
     print(f"[ok] routing {len(records)} alarm record(s) ({firing} firing) "
           f"against {len(issues)} open issue(s)", file=sys.stderr)
+    outputs = {}
     for rec in records:
         try:
-            print(f"     {handle(gh, rec, issues, now)}", file=sys.stderr)
+            print(f"     {handle(gh, rec, issues, now, outputs)}", file=sys.stderr)
         except GhError as e:
             # One broken record must not stop the others, and must not fail the run.
             print(f"::warning::alarm router: {rec.get('label')} failed: {e}")
+
+    gh_out = os.getenv("GITHUB_OUTPUT")
+    if gh_out and outputs:
+        try:
+            with open(gh_out, "a") as f:
+                for k, v in outputs.items():
+                    f.write(f"{k}={v}\n")
+        except OSError:
+            pass
     return 0
 
 
