@@ -119,6 +119,7 @@ jobs:
           fi
 
           PULLS=0
+          JUST_PULLED=0
           while :; do
             NOW=$(date -u +%s)
             if [ "$NOW" -ge "$DEADLINE" ]; then
@@ -173,6 +174,7 @@ jobs:
               fi
               bash scripts/push_with_replay.sh "data: close snipe — $COUNT game(s) @ $HORIZON"
               PULLS=$((PULLS + 1))
+              JUST_PULLED=1
               echo "::endgroup::"
             fi
 
@@ -180,6 +182,19 @@ jobs:
               echo "single-shot mode; exiting"
               break
             fi
+
+            # Always re-evaluate once after a pull, even when nothing else is
+            # pending. It costs one free gate call and proves the snipe actually
+            # registered — the gate should now report the game as already sniped.
+            # Without this the loop exits straight after a pull and never confirms
+            # its own mark took effect.
+            if [ "$JUST_PULLED" = "1" ]; then
+              JUST_PULLED=0
+              echo "re-evaluating to confirm the snipe registered"
+              sleep 5
+              continue
+            fi
+
             if [ "$KEEP" != "true" ]; then
               echo "nothing else within the lookahead; exiting"
               break

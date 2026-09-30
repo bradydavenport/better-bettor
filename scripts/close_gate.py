@@ -634,10 +634,26 @@ def main():
         return 0
 
     if not due:
-        nxt = min((( _parse(e['commence_time']) - now).total_seconds() / 60
-                   for e in events if _parse(e.get("commence_time"))
-                   and _parse(e["commence_time"]) > now), default=None)
-        when = f"next kickoff in {nxt:.0f} min" if nxt is not None else "no upcoming games"
+        # Say WHY it is closed. "next kickoff in 2821 min, window is 2900 min"
+        # reads as a contradiction unless the message names the real reason —
+        # that everything inside the window has already been sniped.
+        in_window = []
+        for e in events:
+            k = _parse(e.get("commence_time"))
+            if k and 0 < (k - now).total_seconds() / 60 <= args.window:
+                in_window.append(e)
+        done = [e for e in in_window if e.get("id") in sniped]
+        if done:
+            names = ", ".join(f"{e.get('away_team')} @ {e.get('home_team')}"
+                              for e in done[:4])
+            when = (f"all {len(done)} game(s) inside the {args.window}-min window "
+                    f"are ALREADY SNIPED ({names})")
+        else:
+            nxt = min((( _parse(e['commence_time']) - now).total_seconds() / 60
+                       for e in events if _parse(e.get("commence_time"))
+                       and _parse(e["commence_time"]) > now), default=None)
+            when = (f"next kickoff in {nxt:.0f} min" if nxt is not None
+                    else "no upcoming games")
         print(f"[skip] gate closed — {when}, window is {args.window} min. "
               f"No API pull, no write, no commit.", file=sys.stderr)
         set_output("pull", "false")
