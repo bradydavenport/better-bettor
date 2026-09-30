@@ -29,6 +29,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Fire a test alarm
+        id: fire
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ALARM_ASSIGNEE: ${{ github.repository_owner }}
@@ -41,36 +42,50 @@ jobs:
           JSON
           python3 scripts/alarm.py --from-file "$RUNNER_TEMP/firing.json"
 
-      - name: Confirm the issue exists
+      # Poll THE SPECIFIC ISSUE, not `gh issue list`. GitHub's issue search index
+      # lags a write by a second or more: a previous version of this check read
+      # "0 open issues" 0.87s after successfully creating one and declared the
+      # alarm channel broken. `gh issue view N` reads the object directly.
+      - name: Confirm the issue is open
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          N: ${{ steps.fire.outputs.issue_number }}
         run: |
-          N=$(gh issue list --label alarm:test --state open --json number \
-                --jq 'length')
-          echo "open [test] issues: $N"
-          if [ "$N" -lt 1 ]; then
-            echo "::error::the alarm router did not create an issue — the alarm channel is BROKEN"
+          if [ -z "$N" ]; then
+            echo "::error::the router did not report an issue number — it never created one"
             exit 1
           fi
-          gh issue list --label alarm:test --state open --json number,assignees,body \
-            --jq '.[0] | "assignees: " + ([.assignees[].login] | join(",")) '
-          # An issue nobody is assigned to and nobody is mentioned in produces no
-          # push notification, which is the exact failure this test exists to catch.
-          ASSIGNED=$(gh issue list --label alarm:test --state open --json assignees \
-                       --jq '[.[0].assignees[].login] | length')
-          MENTIONED=$(gh issue list --label alarm:test --state open --json body \
-                        --jq '[.[0].body | test("@${{ github.repository_owner }}")] | map(select(.)) | length')
+          echo "polling issue #$N for state=OPEN"
+          for i in $(seq 1 20); do
+            STATE=$(gh issue view "$N" --json state --jq .state 2>/dev/null || echo "")
+            echo "  attempt $i: state=${STATE:-<unreadable>}"
+            if [ "$STATE" = "OPEN" ]; then
+              break
+            fi
+            sleep 0.5
+          done
+          if [ "$STATE" != "OPEN" ]; then
+            echo "::error::issue #$N is not OPEN after ~10s — the alarm channel is BROKEN"
+            exit 1
+          fi
+          # An issue nobody is assigned to and nobody is mentioned in sends no push,
+          # which is the failure this test exists to catch.
+          ASSIGNED=$(gh issue view "$N" --json assignees --jq '[.assignees[].login]|length')
+          MENTIONED=$(gh issue view "$N" --json body --jq 'if (.body|test("@${{ github.repository_owner }}")) then 1 else 0 end')
+          echo "assignees=$ASSIGNED mentions=$MENTIONED"
           if [ "$ASSIGNED" -lt 1 ] || [ "$MENTIONED" -lt 1 ]; then
-            echo "::error::the test issue has assignees=$ASSIGNED mentions=$MENTIONED — it would NOT have notified you"
+            echo "::error::issue #$N has assignees=$ASSIGNED mentions=$MENTIONED — it would NOT have notified you"
             exit 1
           fi
-          echo "assigned and @mentioned — this issue would have pushed"
+          echo "#$N is open, assigned and @mentioned — this would have pushed"
 
       - name: Clear it again
         if: github.event.inputs.leave_open != 'true'
+        id: clear
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ALARM_ASSIGNEE: ${{ github.repository_owner }}
+          N: ${{ steps.fire.outputs.issue_number }}
         run: |
           cat > "$RUNNER_TEMP/clear.json" <<'JSON'
           [{"label": "alarm:test",
@@ -79,9 +94,17 @@ jobs:
             "state": "clear", "throttle_hours": 0, "auto_close": true}]
           JSON
           python3 scripts/alarm.py --from-file "$RUNNER_TEMP/clear.json"
-          REMAINING=$(gh issue list --label alarm:test --state open --json number --jq 'length')
-          echo "open [test] issues after clearing: $REMAINING"
-          if [ "$REMAINING" -ne 0 ]; then
-            echo "::error::the test issue was not closed — auto-close is BROKEN"
+          echo "polling issue #$N for state=CLOSED"
+          for i in $(seq 1 20); do
+            STATE=$(gh issue view "$N" --json state --jq .state 2>/dev/null || echo "")
+            echo "  attempt $i: state=${STATE:-<unreadable>}"
+            if [ "$STATE" = "CLOSED" ]; then
+              break
+            fi
+            sleep 0.5
+          done
+          if [ "$STATE" != "CLOSED" ]; then
+            echo "::error::issue #$N is still $STATE after ~10s — auto-close is BROKEN"
             exit 1
           fi
+          echo "#$N closed — full open/notify/close cycle verified"

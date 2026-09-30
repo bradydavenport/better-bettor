@@ -19,9 +19,14 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import scripts.close_gate as gate_mod
 from scripts.close_gate import (
     PRUNE_DAYS,
     deadman_check,
+    doorbell_check,
+    is_game_day,
+    newest_created,
+    pollable,
     decide,
     in_horizon,
     load_state,
@@ -207,6 +212,122 @@ class TestDeadmanSwitch(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             self.assertIsNotNone(
                 deadman_check(self._nfl(td, {"pull-lines": "not a date"}), NOW))
+
+
+class TestPollable(unittest.TestCase):
+    """What a poller is willing to stay alive for."""
+
+    def test_inside_the_lookahead(self):
+        self.assertEqual(len(pollable([ev(30), ev(200), ev(329)], {}, NOW, 330)), 3)
+
+    def test_outside_the_lookahead(self):
+        self.assertEqual(pollable([ev(331)], {}, NOW, 330), [])
+
+    def test_already_sniped_is_not_worth_waiting_for(self):
+        self.assertEqual(pollable([ev(30, gid="x")], {"x": {}}, NOW, 330), [])
+
+    def test_already_started_is_not_worth_waiting_for(self):
+        self.assertEqual(pollable([ev(-5)], {}, NOW, 330), [])
+
+    def test_sorted_soonest_first(self):
+        got = [int(m) for _, m in pollable([ev(300), ev(30), ev(120)], {}, NOW, 330)]
+        self.assertEqual(got, [30, 120, 300])
+
+    def test_lookahead_stays_under_the_six_hour_job_cap(self):
+        from scripts.close_gate import POLL_LOOKAHEAD_MIN
+        self.assertLessEqual(POLL_LOOKAHEAD_MIN, 350,
+                             "a poller must finish its last pull inside 6h")
+
+
+class TestDoorbellHeartbeat(unittest.TestCase):
+    """Catches the external cron-job.org doorbell dying."""
+
+    def _runs(self, *specs):
+        """specs: (minutes_ago, status, id)"""
+        return [{"id": i, "status": st,
+                 "created_at": (NOW - timedelta(minutes=m)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+                for m, st, i in specs]
+
+    def test_newest_created_ignores_status(self):
+        runs = self._runs((5, "cancelled", 1), (60, "success", 2))
+        self.assertEqual(newest_created(runs), NOW - timedelta(minutes=5))
+
+    def test_newest_created_excludes_this_run(self):
+        runs = self._runs((0, "in_progress", 99), (30, "cancelled", 1))
+        self.assertEqual(newest_created(runs, exclude_run_id=99),
+                         NOW - timedelta(minutes=30))
+
+    def test_a_4h_poller_with_evicted_dispatches_is_SILENT(self):
+        """The scenario that would break a naive implementation.
+
+        A poller has held the concurrency group for 4 hours. Every 10 minutes the
+        doorbell dispatches a run, which is created and then immediately evicted,
+        so it never starts and never succeeds. The doorbell is perfectly healthy
+        and must not page.
+        """
+        runs = self._runs(*[(m, "cancelled", 100 + m) for m in range(0, 240, 10)])
+        runs.append({"id": 99, "status": "in_progress",
+                     "created_at": (NOW - timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%SZ")})
+        orig = gate_mod.last_run_created
+        gate_mod.last_run_created = lambda *a, **k: newest_created(runs, 99)
+        try:
+            msg = doorbell_check([ev(120)], NOW, "o/r", "w.yml", "tok",
+                                 exclude_run_id=99)
+        finally:
+            gate_mod.last_run_created = orig
+        self.assertIsNone(msg, "evicted dispatches prove the doorbell is ringing")
+
+    def test_fires_when_nothing_has_been_created_recently(self):
+        orig = gate_mod.last_run_created
+        gate_mod.last_run_created = lambda *a, **k: NOW - timedelta(minutes=50)
+        try:
+            msg = doorbell_check([ev(120)], NOW, "o/r", "w.yml", "tok")
+        finally:
+            gate_mod.last_run_created = orig
+        self.assertIsNotNone(msg)
+        self.assertIn("50 min ago", msg)
+
+    def test_silent_just_under_the_limit(self):
+        orig = gate_mod.last_run_created
+        gate_mod.last_run_created = lambda *a, **k: NOW - timedelta(minutes=40)
+        try:
+            self.assertIsNone(doorbell_check([ev(120)], NOW, "o/r", "w.yml", "tok"))
+        finally:
+            gate_mod.last_run_created = orig
+
+    def test_silent_off_a_game_day_even_when_very_stale(self):
+        """A quiet doorbell on a Tuesday night is not an emergency."""
+        orig = gate_mod.last_run_created
+        gate_mod.last_run_created = lambda *a, **k: NOW - timedelta(days=3)
+        try:
+            self.assertIsNone(doorbell_check([ev(60 * 30)], NOW, "o/r", "w.yml", "tok"))
+        finally:
+            gate_mod.last_run_created = orig
+
+    def test_game_day_window(self):
+        self.assertTrue(is_game_day([ev(11 * 60)], NOW))
+        self.assertFalse(is_game_day([ev(13 * 60)], NOW))
+        self.assertTrue(is_game_day([ev(-5 * 60)], NOW))
+        self.assertFalse(is_game_day([ev(-7 * 60)], NOW))
+
+    def test_no_runs_at_all_is_an_alarm(self):
+        orig = gate_mod.last_run_created
+        gate_mod.last_run_created = lambda *a, **k: None
+        try:
+            self.assertIsNotNone(doorbell_check([ev(60)], NOW, "o/r", "w.yml", "tok"))
+        finally:
+            gate_mod.last_run_created = orig
+
+    def test_api_failure_is_an_alarm_not_silence(self):
+        def boom(*a, **k):
+            raise RuntimeError("403")
+        orig = gate_mod.last_run_created
+        gate_mod.last_run_created = boom
+        try:
+            msg = doorbell_check([ev(60)], NOW, "o/r", "w.yml", "tok")
+        finally:
+            gate_mod.last_run_created = orig
+        self.assertIsNotNone(msg)
 
 
 class TestStateFile(unittest.TestCase):

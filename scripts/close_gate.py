@@ -62,6 +62,13 @@ DEFAULT_STATE = "data/sniped.json"
 PRUNE_DAYS = 14
 MISS_LOOKBACK_HOURS = 6
 
+# How far ahead a poller is willing to wait. GitHub caps a job at 6h, so this
+# leaves headroom to finish the last pull and commit before being killed.
+POLL_LOOKAHEAD_MIN = 330          # 5.5h
+DOORBELL_MAX_GAP_MIN = 45
+GAMEDAY_AHEAD_H = 12
+GAMEDAY_BEHIND_H = 6
+
 
 def _api_key():
     """ODDS_API_KEY from the environment, falling back to .env.
@@ -149,6 +156,28 @@ def fetch_events(sport, api_key):
         raise GateError(f"/events unreachable: {e}")
 
 
+def load_state_ref(ref):
+    """sniped map as committed at `ref`, e.g. origin/main:data/sniped.json.
+
+    A poller lives for hours, so its checkout goes stale. Another run finishing a
+    snipe pushes to origin, and only this read sees it. The concurrency group
+    stops two runs pulling simultaneously; THIS is what stops the run that starts
+    after a poller from re-pulling a game the poller already took.
+    """
+    import subprocess
+    try:
+        subprocess.run(["git", "fetch", "-q", "origin"], capture_output=True,
+                       timeout=60)
+        r = subprocess.run(["git", "show", ref], capture_output=True, text=True,
+                           timeout=60)
+        if r.returncode != 0:
+            return {}
+        doc = json.loads(r.stdout)
+    except Exception:                          # noqa: BLE001
+        return {}
+    return (doc.get("sniped") or {}) if isinstance(doc, dict) else {}
+
+
 def load_state(path):
     try:
         doc = json.loads(Path(path).read_text())
@@ -231,6 +260,24 @@ def decide(events, sniped, now, window_min, grace_min):
     return due, horizon, missed
 
 
+def pollable(events, sniped, now, lookahead_min=POLL_LOOKAHEAD_MIN):
+    """Unsniped kickoffs far enough out to be worth waiting for, soonest first.
+
+    The bash loop uses this to decide between sleeping and exiting. The gate
+    itself never sleeps: keeping it a pure decision function is what makes the
+    timing testable, and it means a hung poll cannot wedge inside Python.
+    """
+    out = []
+    for e in events:
+        k = _parse(e.get("commence_time"))
+        if not k or e.get("id") in sniped:
+            continue
+        mins = (k - now).total_seconds() / 60
+        if 0 < mins <= lookahead_min:
+            out.append((e, mins))
+    return sorted(out, key=lambda x: x[1])
+
+
 def in_horizon(events, horizon, now):
     """Games this pull captured the close for: kicking off, up to the horizon."""
     out = []
@@ -282,6 +329,82 @@ def deadman_check(nfl_path, now, max_hours=DEADMAN_HOURS, writer=DEADMAN_WRITER)
 
 ALARM_STALE = "alarm:pull-lines-stale"
 ALARM_MISSED = "alarm:missed-close"
+ALARM_DOORBELL = "alarm:doorbell-stale"
+
+
+def is_game_day(events, now):
+    """True when a kickoff is close enough that the doorbell matters.
+
+    Outside that, a quiet doorbell is normal and alarming on it would page for
+    every weekday night.
+    """
+    for e in events:
+        k = _parse(e.get("commence_time"))
+        if not k:
+            continue
+        h = (k - now).total_seconds() / 3600
+        if -GAMEDAY_BEHIND_H <= h <= GAMEDAY_AHEAD_H:
+            return True
+    return False
+
+
+def last_run_created(repo, workflow, token, exclude_run_id=None):
+    """When a run of `workflow` was last CREATED, newest first.
+
+    Creation, deliberately — not start and not completion. A long-lived poller
+    holds the concurrency group, so the dispatches arriving behind it are created
+    and then immediately evicted. Those runs never start and never succeed, but
+    they prove the doorbell is ringing. Measuring starts would read a healthy
+    doorbell as dead for as long as a poller is alive.
+    """
+    url = (f"https://api.github.com/repos/{repo}/actions/workflows/"
+           f"{workflow}/runs?per_page=30")
+    req = urllib.request.Request(url, headers={
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "better-bettor/close-gate",
+    })
+    with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as r:
+        runs = (json.loads(r.read().decode()) or {}).get("workflow_runs") or []
+    return newest_created(runs, exclude_run_id)
+
+
+def newest_created(runs, exclude_run_id=None):
+    """Newest `created_at` across runs of ANY status, excluding this run.
+
+    Status is deliberately ignored. While a poller holds the concurrency group the
+    dispatches behind it are created and then evicted, so they sit at `cancelled`
+    with no start time — yet their existence is the proof the doorbell is ringing.
+    Filtering to successful or even started runs would report a perfectly healthy
+    doorbell as dead for the entire life of every poller.
+    """
+    stamps = [_parse(x.get("created_at")) for x in runs
+              if str(x.get("id")) != str(exclude_run_id)]
+    return max([s for s in stamps if s], default=None)
+
+
+def doorbell_check(events, now, repo, workflow, token, exclude_run_id=None,
+                   max_gap_min=DOORBELL_MAX_GAP_MIN):
+    """Is the external doorbell still ringing? Returns a message, or None."""
+    if not is_game_day(events, now):
+        return None
+    try:
+        last = last_run_created(repo, workflow, token,
+                                exclude_run_id=exclude_run_id)
+    except Exception as e:                      # noqa: BLE001
+        return (f"could not read {workflow} run history to check the doorbell "
+                f"({type(e).__name__}: {e})")
+    if not last:
+        return (f"no previous {workflow} run found at all — the doorbell has "
+                f"never rung")
+    gap = (now - last).total_seconds() / 60
+    if gap > max_gap_min:
+        return (f"the last {workflow} run was created {gap:.0f} min ago, over "
+                f"the {max_gap_min} min limit, on a game day. The external "
+                f"cron-job.org doorbell has probably stopped — check it, and "
+                f"check whether the fine-grained PAT has expired.")
+    return None
 
 
 def alarm(label, title, body, state="firing", throttle_hours=24, auto_close=True):
@@ -324,6 +447,19 @@ def main():
     ap.add_argument("--deadman-hours", type=int, default=DEADMAN_HOURS,
                     help=f"alarm when the daily pull is older than this "
                          f"(default: {DEADMAN_HOURS})")
+    ap.add_argument("--state-ref", default=None,
+                    help="also treat games sniped at this git ref as sniped, e.g. "
+                         "origin/main:data/sniped.json. Lets a long-lived poller "
+                         "see snipes other runs have pushed since it checked out.")
+    ap.add_argument("--lookahead", type=int, default=POLL_LOOKAHEAD_MIN,
+                    help=f"minutes ahead worth staying alive for "
+                         f"(default: {POLL_LOOKAHEAD_MIN} = 5.5h, under the 6h "
+                         f"job cap)")
+    ap.add_argument("--heartbeat-repo", default=None,
+                    help="owner/name — enables the doorbell heartbeat check")
+    ap.add_argument("--heartbeat-workflow", default="snipe-closes.yml")
+    ap.add_argument("--heartbeat-exclude-run", default=None,
+                    help="this run's id, so it does not vouch for itself")
     ap.add_argument("--alarms-out", default=None,
                     help="write alarm records here for scripts/alarm.py to route "
                          "into GitHub issues")
@@ -384,8 +520,40 @@ def main():
             set_output("pull", "false")
             return 0
 
-    sniped = load_state(args.state)
+    sniped = dict(load_state(args.state))
+    if args.state_ref:
+        remote = load_state_ref(args.state_ref)
+        new_to_us = set(remote) - set(sniped)
+        sniped.update(remote)
+        if new_to_us:
+            print(f"[note] {len(new_to_us)} game(s) already sniped by another run "
+                  f"(seen via {args.state_ref})", file=sys.stderr)
+
+    # Doorbell heartbeat: costs no credits, writes nothing, needs no commit.
+    if args.heartbeat_repo:
+        token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
+        if not token:
+            print("[note] no GITHUB_TOKEN; skipping the doorbell heartbeat",
+                  file=sys.stderr)
+        else:
+            dead = doorbell_check(events, now, args.heartbeat_repo,
+                                  args.heartbeat_workflow, token,
+                                  exclude_run_id=args.heartbeat_exclude_run)
+            if dead:
+                print(f"::error::doorbell: {dead}")
+                alarms.append(alarm(
+                    ALARM_DOORBELL, "[alarm] the snipe doorbell has stopped",
+                    f"{dead}\n\nWithout the doorbell, snipe-closes falls back to "
+                    f"its `*/15` schedule, which this repo only honours about 4% "
+                    f"of the time — so closes will be missed.\n\nThis issue "
+                    f"closes itself once runs resume."))
+            else:
+                alarms.append(alarm(
+                    ALARM_DOORBELL, "[alarm] the snipe doorbell has stopped",
+                    "Runs are being created again.", state="clear"))
+
     due, horizon, missed = decide(events, sniped, now, args.window, args.grace)
+    waiting = pollable(events, sniped, now, args.lookahead)
 
     # Missed closes are EVENTS. Report each game exactly once, then remember it,
     # so the 6h lookback does not re-report the same game on all 24 runs inside
@@ -473,6 +641,14 @@ def main():
         print(f"[skip] gate closed — {when}, window is {args.window} min. "
               f"No API pull, no write, no commit.", file=sys.stderr)
         set_output("pull", "false")
+        # Tell the caller whether sleeping is worth it, so a poller waits for a
+        # kickoff that is coming and exits when nothing is.
+        set_output("keep_polling", "true" if waiting else "false")
+        if waiting:
+            e, mins = waiting[0]
+            print(f"[wait] {len(waiting)} unsniped kickoff(s) within "
+                  f"{args.lookahead} min; next is {e.get('away_team')} @ "
+                  f"{e.get('home_team')} in {mins:.0f} min", file=sys.stderr)
         flush_alarms()
         return 0
 
@@ -485,6 +661,10 @@ def main():
     set_output("pull", "true")
     set_output("horizon", _iso(horizon))
     set_output("game_count", str(len(captured)))
+    # More games may come later in this poller's lifetime; the loop re-enters.
+    still = [w for w in waiting if w[0].get("id") not in
+             {e["id"] for e in captured}]
+    set_output("keep_polling", "true" if still else "false")
     flush_alarms()
     return 0
 
