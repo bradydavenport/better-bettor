@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "updated_at": "2026-10-04T19:20:22Z",
-    "count": 11,
+    "updated_at": "2026-10-04T19:40:08Z",
+    "count": 14,
     "pruned_older_than_days": 14,
     "notes": "game_ids whose closing line has already been captured, so the */15 gate does not pull for them again. Keyed by The Odds API event id. Entries are dropped 14 days after kickoff. Written only after a pull succeeds \u2014 never before, so a failed pull retries.",
     "missed_note": "games whose close was NEVER captured and whose miss has already been reported as a GitHub issue comment. Tracked so the 6h lookback reports each game once instead of once every 15 minutes. These are losses, not recoveries."
@@ -58,9 +58,24 @@
       "sniped_at": "2026-10-04T16:15:39Z"
     },
     "c327223d76a3b7b0db8c6c104442f44b": {
-      "commence_time": "2026-10-04T20:05:00Z",
+      "commence_time": "2026-10-04T20:10:00Z",
       "matchup": "Miami Dolphins @ Minnesota Vikings",
-      "sniped_at": "2026-10-04T19:20:22Z"
+      "sniped_at": "2026-10-04T19:40:08Z"
+    },
+    "a7e7efb75a9792ac63480ae6328dca18": {
+      "commence_time": "2026-10-04T20:25:00Z",
+      "matchup": "Denver Broncos @ San Francisco 49ers",
+      "sniped_at": "2026-10-04T19:40:08Z"
+    },
+    "e0cbd266dcf997089203a1b33ba0333d": {
+      "commence_time": "2026-10-04T20:25:00Z",
+      "matchup": "Kansas City Chiefs @ Las Vegas Raiders",
+      "sniped_at": "2026-10-04T19:40:08Z"
+    },
+    "96d2373cda647873b971f268482bced0": {
+      "commence_time": "2026-10-04T20:25:00Z",
+      "matchup": "Los Angeles Chargers @ Seattle Seahawks",
+      "sniped_at": "2026-10-04T19:40:08Z"
     }
   },
   "missed": {}
