@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "updated_at": "2026-10-01T23:30:20Z",
-    "count": 1,
+    "updated_at": "2026-10-04T12:45:37Z",
+    "count": 2,
     "pruned_older_than_days": 14,
     "notes": "game_ids whose closing line has already been captured, so the */15 gate does not pull for them again. Keyed by The Odds API event id. Entries are dropped 14 days after kickoff. Written only after a pull succeeds \u2014 never before, so a failed pull retries.",
     "missed_note": "games whose close was NEVER captured and whose miss has already been reported as a GitHub issue comment. Tracked so the 6h lookback reports each game once instead of once every 15 minutes. These are losses, not recoveries."
@@ -11,6 +11,11 @@
       "commence_time": "2026-10-02T00:15:00Z",
       "matchup": "Pittsburgh Steelers @ Cleveland Browns",
       "sniped_at": "2026-10-01T23:30:20Z"
+    },
+    "c9d8ed8aa4889486eaf10a630138ede0": {
+      "commence_time": "2026-10-04T13:30:00Z",
+      "matchup": "Indianapolis Colts @ Washington Commanders",
+      "sniped_at": "2026-10-04T12:45:37Z"
     }
   },
   "missed": {}
