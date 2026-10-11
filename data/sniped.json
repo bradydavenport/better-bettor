@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "updated_at": "2026-10-11T12:45:56Z",
-    "count": 18,
+    "updated_at": "2026-10-11T16:15:48Z",
+    "count": 26,
     "pruned_older_than_days": 14,
     "notes": "game_ids whose closing line has already been captured, so the */15 gate does not pull for them again. Keyed by The Odds API event id. Entries are dropped 14 days after kickoff. Written only after a pull succeeds \u2014 never before, so a failed pull retries.",
     "missed_note": "games whose close was NEVER captured and whose miss has already been reported as a GitHub issue comment. Tracked so the 6h lookback reports each game once instead of once every 15 minutes. These are losses, not recoveries."
@@ -96,6 +96,46 @@
       "commence_time": "2026-10-11T13:30:00Z",
       "matchup": "Philadelphia Eagles @ Jacksonville Jaguars",
       "sniped_at": "2026-10-11T12:45:56Z"
+    },
+    "2caea57b1e5cfbba1334cfbfd46f6771": {
+      "commence_time": "2026-10-11T17:00:00Z",
+      "matchup": "Chicago Bears @ Green Bay Packers",
+      "sniped_at": "2026-10-11T16:15:48Z"
+    },
+    "c4647ca1201e6768501877267ca8251b": {
+      "commence_time": "2026-10-11T17:00:00Z",
+      "matchup": "Cincinnati Bengals @ Miami Dolphins",
+      "sniped_at": "2026-10-11T16:15:48Z"
+    },
+    "9db4ed15fe34fca1fb62f040cd244591": {
+      "commence_time": "2026-10-11T17:00:00Z",
+      "matchup": "Cleveland Browns @ New York Jets",
+      "sniped_at": "2026-10-11T16:15:48Z"
+    },
+    "cc52bba56e74f5cddbe9011046181c3d": {
+      "commence_time": "2026-10-11T17:00:00Z",
+      "matchup": "Houston Texans @ Tennessee Titans",
+      "sniped_at": "2026-10-11T16:15:48Z"
+    },
+    "448d7cf18c6db4c811ed82ded1b72867": {
+      "commence_time": "2026-10-11T17:00:00Z",
+      "matchup": "Indianapolis Colts @ Pittsburgh Steelers",
+      "sniped_at": "2026-10-11T16:15:48Z"
+    },
+    "6b024bad1abb54f597225e4ab9b39d89": {
+      "commence_time": "2026-10-11T17:00:00Z",
+      "matchup": "Las Vegas Raiders @ New England Patriots",
+      "sniped_at": "2026-10-11T16:15:48Z"
+    },
+    "2cda9bf0fbe35a2735f0dd8aaafe9eff": {
+      "commence_time": "2026-10-11T17:00:00Z",
+      "matchup": "Minnesota Vikings @ New Orleans Saints",
+      "sniped_at": "2026-10-11T16:15:48Z"
+    },
+    "fbffd0b7722fd81d68d5d62472dc80e8": {
+      "commence_time": "2026-10-11T17:00:00Z",
+      "matchup": "New York Giants @ Washington Commanders",
+      "sniped_at": "2026-10-11T16:15:48Z"
     }
   },
   "missed": {}
