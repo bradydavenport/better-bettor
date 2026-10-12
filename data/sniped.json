@@ -1,7 +1,7 @@
 {
   "_meta": {
     "updated_at": "2026-10-11T23:35:10Z",
-    "count": 30,
+    "count": 31,
     "pruned_older_than_days": 14,
     "notes": "game_ids whose closing line has already been captured, so the */15 gate does not pull for them again. Keyed by The Odds API event id. Entries are dropped 14 days after kickoff. Written only after a pull succeeds \u2014 never before, so a failed pull retries.",
     "missed_note": "games whose close was NEVER captured and whose miss has already been reported as a GitHub issue comment. Tracked so the 6h lookback reports each game once instead of once every 15 minutes. These are losses, not recoveries."
@@ -156,7 +156,11 @@
       "commence_time": "2026-10-12T00:20:00Z",
       "matchup": "Baltimore Ravens @ Atlanta Falcons",
       "sniped_at": "2026-10-11T23:35:10Z"
+    },
+    "e6d00eedd87d367e510314bd8cab8f6f": {
+      "commence_time": "2026-10-13T00:15:00Z",
+      "matchup": "Buffalo Bills @ Los Angeles Rams",
+      "sniped_at": "2026-10-12T23:30:39Z"
     }
-  },
-  "missed": {}
+  }
 }
