@@ -80,6 +80,36 @@ was never captured **and whose miss has already been reported**. The gate looks
 back 6 hours for misses, which is 24 runs at `*/15`; without this the same game
 would page every 15 minutes. Each game is reported exactly once.
 
+## Postgres ledger (dual-write period)
+
+The ledger is moving to Neon Postgres. **During dual-write, `history.jsonl`
+remains authoritative** — every pull writes both, a database failure only warns,
+and `db-parity.yml` compares them daily. Cutover waits on a clean parity streak,
+not a date.
+
+| file | role |
+|---|---|
+| `db/schema.sql` | the schema, idempotent (`IF NOT EXISTS` throughout) |
+| `scripts/db.py` | connection + the single ingestion path shared by the live writer and the migration |
+| `scripts/migrate_jsonl_to_db.py` | one-off JSONL load, with exact row-level verification |
+| `scripts/db_parity.py` | daily JSONL-vs-Postgres comparison → `alarm:db-parity` |
+| `scripts/db_backup.py` | weekly `pg_dump` → GitHub Release asset |
+
+`DATABASE_URL` is the **direct** Neon URL (no `-pooler`). Every use here is on
+the direct side of Neon's guidance: schema migrations, `pg_dump`, and short
+single-transaction writes. `db.py` warns if handed a pooled URL.
+
+One table grows: `observations` holds **every** observation from every pull, not
+only those where the price moved. Change-only storage was designed first and
+rejected — parity on `last_update` can never pass under it (a book restamping
+without moving its price emits no row), and change detection races when
+`pull-lines` and `snipe-closes` write concurrently. A row existing for a pull
+*is* the record that the book offered that market, so there is no coverage table.
+
+**Backups are public.** The repo is public, so Release dumps are world-readable.
+Odds data only — never bets, stakes or bankroll. `db_backup.py` enforces this
+with a table allowlist and refuses to publish a dump containing anything else.
+
 ## Alarms
 
 Three conditions open a GitHub issue rather than just annotating a log, because
