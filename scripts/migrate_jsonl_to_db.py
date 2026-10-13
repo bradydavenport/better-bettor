@@ -89,10 +89,13 @@ def migrate(conn, rows, label):
     groups = group_into_pulls(rows)
     pulls = inserted = 0
     for (writer, fetched_at), batch in sorted(groups.items(), key=lambda kv: kv[0][1] or ""):
-        # Stable key, so re-running the migration is a no-op rather than a
-        # second copy of history.
-        key = f"migrated:{label}:{writer}:{fetched_at}"
-        _, n = w.write_pull(batch, pull_key=key)
+        # db.pull_key() — the SAME key the live dual-write derives, so a pull
+        # already written by a dual-write is skipped here rather than inserted a
+        # second time under a different name. An earlier version prefixed this
+        # with "migrated:", which made the migration order-dependent: a
+        # dual-write landing before it duplicated 960 observations, and only the
+        # daily parity check would have noticed.
+        _, n = w.write_pull(batch, pull_key=db.pull_key(writer, fetched_at))
         pulls += 1
         inserted += n
     return pulls, inserted

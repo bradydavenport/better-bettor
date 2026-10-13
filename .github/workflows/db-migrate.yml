@@ -1,0 +1,56 @@
+name: db-migrate
+
+# MANUAL ONLY. Applies db/schema.sql and loads data/history.jsonl plus
+# data/history_backfill.jsonl into Neon, then verifies the result row by row.
+#
+# Safe to run repeatedly. Both the schema and the load are idempotent: every
+# statement is IF NOT EXISTS, and a pull's identity in Postgres is
+# "<writer>:<fetched_at>" — the SAME key the live dual-write derives — so a pull
+# already written by a dual-write is skipped rather than stored twice.
+#
+# That ordering property is the point, and it was not free: an earlier version
+# prefixed the migration's keys with "migrated:", which duplicated 960
+# observations when a dual-write landed first. Do not reintroduce a
+# write-path-specific prefix here.
+#
+# No schedule. Running this on a timer would be a standing invitation to reload
+# history over a live database.
+
+on:
+  workflow_dispatch:
+    inputs:
+      verify_only:
+        description: "Compare what is already there without loading anything"
+        type: boolean
+        default: false
+
+concurrency:
+  group: db-migrate               # never two of these at once
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+
+      - name: Migrate and verify
+        env:
+          # DIRECT url. Schema migrations over a pooled endpoint fail in ways
+          # that never mention pooling. See scripts/db.py.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          VERIFY_ONLY: ${{ github.event.inputs.verify_only }}
+        run: |
+          ARGS=(--apply-schema)
+          if [ "$VERIFY_ONLY" = "true" ]; then
+            ARGS=(--verify-only)
+          fi
+          # Fails the run on any mismatch: unlike the daily parity check, this is
+          # a deliberate one-off and a silent partial load is worth stopping for.
+          python3 scripts/migrate_jsonl_to_db.py "${ARGS[@]}"

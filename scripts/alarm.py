@@ -229,7 +229,9 @@ def handle(gh, rec, issues, now, outputs=None):
         if not auto_close:
             return f"{label}: clear, but auto_close is off — leaving it open"
         since = _parse(existing.get("createdAt"))
-        dur = (f", firing for {(now - since).total_seconds() / 3600:.1f}h"
+        # max(0, ...) because a little clock skew between us and GitHub would
+        # otherwise print "firing for -0.1h" in a comment a human reads.
+        dur = (f", firing for {max(0.0, (now - since).total_seconds()) / 3600:.1f}h"
                if since else "")
         gh.comment(existing["number"],
                    f"{mention(gh.assignee)}Recovered at {_iso(now)}{dur}."

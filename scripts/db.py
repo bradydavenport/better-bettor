@@ -92,6 +92,23 @@ def apply_schema(conn, path=None):
 UNKNOWN_WRITER = "unknown"
 
 
+def pull_key(writer, fetched_at):
+    """The identity of a pull: who pulled, and when.
+
+    Derived from the pull itself rather than from the run that wrote it, so the
+    live dual-write and the migration produce the SAME key for the same pull and
+    whichever arrives second is a no-op. A run-scoped key (run id + attempt)
+    looks like better retry protection but is not: a retried step re-fetches, so
+    it gets a new fetched_at and is honestly a new observation either way — while
+    the run-scoped name would let the migration insert the same moment twice
+    under a different key.
+    """
+    ts = fetched_at
+    if hasattr(ts, "strftime"):
+        ts = ts.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return f"{writer}:{ts}"
+
+
 def resolve_writer(row):
     """A row's writer, recovered from `source` where possible, else 'unknown'."""
     w = row.get("writer")

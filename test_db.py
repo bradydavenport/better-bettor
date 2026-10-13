@@ -12,7 +12,14 @@ that makes verification meaningful.
 import unittest
 from datetime import datetime, timezone
 
-from scripts.db import EXCHANGE_BOOKS, TABLES, UNKNOWN_WRITER, database_url, resolve_writer
+from scripts.db import (
+    EXCHANGE_BOOKS,
+    TABLES,
+    UNKNOWN_WRITER,
+    database_url,
+    pull_key,
+    resolve_writer,
+)
 from scripts.migrate_jsonl_to_db import _iso, group_into_pulls, identity
 
 
@@ -105,6 +112,84 @@ class TestGrouping(unittest.TestCase):
         del r["writer"]
         g = group_into_pulls([r])
         self.assertEqual(list(g)[0][0], "git_backfill")
+
+
+class TestPullKey(unittest.TestCase):
+    """The key must be the pull's identity, not the run that wrote it.
+
+    An earlier version prefixed migration keys with "migrated:", so a dual-write
+    landing before the migration got stored twice under different names — 960
+    duplicated observations, caught only by the next day's parity check.
+    """
+
+    TS = "2026-10-13T19:50:15Z"
+
+    def test_live_and_migration_derive_the_same_key(self):
+        self.assertEqual(pull_key("pull-lines", self.TS),
+                         "pull-lines:2026-10-13T19:50:15Z")
+
+    def test_a_datetime_and_its_string_form_agree(self):
+        dt = datetime(2026, 10, 13, 19, 50, 15, tzinfo=timezone.utc)
+        self.assertEqual(pull_key("pull-lines", dt), pull_key("pull-lines", self.TS))
+
+    def test_a_non_utc_datetime_normalizes_first(self):
+        from datetime import timedelta
+        local = datetime(2026, 10, 13, 13, 50, 15,
+                         tzinfo=timezone(timedelta(hours=-6)))
+        self.assertEqual(pull_key("pull-lines", local), pull_key("pull-lines", self.TS))
+
+    def test_different_writers_at_the_same_instant_are_different_pulls(self):
+        self.assertNotEqual(pull_key("pull-lines", self.TS),
+                            pull_key("snipe-closes", self.TS))
+
+    def test_the_key_carries_no_run_scoped_component(self):
+        """A run id in here would reintroduce the duplication bug."""
+        k = pull_key("pull-lines", self.TS)
+        self.assertEqual(k.count(":"), 3, "writer + an ISO stamp, nothing else")
+        self.assertTrue(k.startswith("pull-lines:"))
+
+
+class TestDbWriteAlarm(unittest.TestCase):
+    """A swallowed database error must still page, or an outage is invisible
+    until the next day's parity run."""
+
+    def test_failure_produces_a_firing_condition_alarm(self):
+        import fetch_lines as F
+        import os
+        saved = os.environ.get("DATABASE_URL")
+        os.environ["DATABASE_URL"] = "postgresql://nobody@127.0.0.1:1/nope"
+        try:
+            n, alarm = F.dual_write_safely([{"fetched_at": "t", "writer": "w",
+                                             "game_id": "g", "book": "b",
+                                             "market": "h2h", "outcome": "o",
+                                             "price": -110}], pull_key="k")
+        finally:
+            if saved is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = saved
+        self.assertEqual(n, 0, "a failed write reports zero rows")
+        self.assertIsNotNone(alarm, "and must not fail silently")
+        self.assertEqual(alarm["label"], F.ALARM_DB_WRITE)
+        self.assertEqual(alarm["state"], "firing")
+        self.assertTrue(alarm["auto_close"], "a condition, so it clears itself")
+        self.assertIn("No data is lost", alarm["body"])
+
+    def test_no_database_url_raises_no_alarm_at_all(self):
+        import fetch_lines as F
+        import os
+        saved = os.environ.pop("DATABASE_URL", None)
+        try:
+            n, alarm = F.dual_write_safely([{"fetched_at": "t"}], pull_key="k")
+        finally:
+            if saved:
+                os.environ["DATABASE_URL"] = saved
+        self.assertEqual((n, alarm), (0, None),
+                         "an unconfigured database is not a fault")
+
+    def test_empty_rows_raise_no_alarm(self):
+        import fetch_lines as F
+        self.assertEqual(F.dual_write_safely([], pull_key="k"), (0, None))
 
 
 class TestGuards(unittest.TestCase):
