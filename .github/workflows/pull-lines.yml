@@ -8,25 +8,30 @@ name: pull-lines
 #   * scheduled 1x/day  -> ml + spread   (2 credits/run, ~60/month)
 #   * manual "Run workflow" with markets=total (or ml / spread / all) -> on demand
 #
-# Cost = 1 credit per market. The local .usage.json limiter does NOT persist
-# between CI runs, so the cron line + the markets choice are the real budget.
-# Over the 500/month cap the API just 401s until the 1st — never a charge.
+# Cost = 1 credit per market. Over the 500/month cap the API just 401s until the
+# 1st — never a charge.
+#
+# TRIGGERING: the external cron-job.org doorbell dispatches this daily at 13:07
+# UTC, because this repo honours its `schedule` crons roughly 4% of the time and
+# ran 3-7h late every day it did. The cron below is retained purely as a backup;
+# scripts/plan_pull.py skips a run whose work was already done, so the two
+# triggers cannot double-spend credits on the same day.
 
 on:
   schedule:
-    # Two entries, same time, split by day so the step can vary the markets:
-    # github.event.schedule carries the cron string that fired.
-    # :07, not :00 — off the top of the hour so this does not collide with the
-    # sniper's */15 ticks for a runner slot every single day.
-    - cron: "7 13 * * 2"            # Tue -> the OPENER: all 3 markets (3 credits)
-    - cron: "7 13 * * 0,1,3,4,5,6"  # other days -> drift: ml + spread (2 credits)
+    # Backup only — the doorbell is the primary trigger. One entry now: market
+    # selection reads the UTC day of week, not which cron fired.
+    # :07, not :00 — off the top of the hour so this does not compete with the
+    # sniper's */15 ticks for a runner slot.
+    - cron: "7 13 * * *"
   workflow_dispatch:
     inputs:
       markets:
-        description: "Markets to pull (1 credit each; patched into the existing file)"
+        description: "Markets to pull — 'auto' decides by UTC day of week (Tue = all 3)"
         type: choice
-        default: "total"
+        default: "auto"
         options:
+          - "auto"
           - "total"
           - "ml"
           - "spread"
@@ -56,7 +61,18 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # Decides markets by UTC DAY OF WEEK, not by github.event.schedule, which
+      # is empty on workflow_dispatch and would have silently dropped Tuesday's
+      # totals the moment the doorbell took over. Also guards against the
+      # doorbell and the backup cron both firing on the same day.
+      - name: Plan the pull
+        id: plan
+        env:
+          MARKETS_OVERRIDE: ${{ github.event.inputs.markets }}
+        run: python3 scripts/plan_pull.py --nfl data/nfl.json
+
       - name: Note the ledger size before the pull
+        if: steps.plan.outputs.skip != 'true' 
         run: |
           mkdir -p "$RUNNER_TEMP/out"
           stat -c%s data/history.jsonl 2>/dev/null > "$RUNNER_TEMP/out/offset" \
@@ -66,18 +82,15 @@ jobs:
       # gitignored file, so every run started at zero and check() never fired.
       # It now reads the committed data/usage.json; this proves it still blocks.
       - name: Verify the credit limiter blocks
+        if: steps.plan.outputs.skip != 'true'
         run: python fetch_lines.py --self-test-limiter
 
       - name: Pull NFL lines
         id: pull
+        if: steps.plan.outputs.skip != 'true'
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          # A manual run uses its input. A scheduled run picks by which cron fired:
-          # Tuesday is the opener and takes totals too, the rest are drift pulls.
-          MARKETS: >-
-            ${{ github.event.inputs.markets
-                || (github.event.schedule == '7 13 * * 2' && 'all')
-                || 'ml,spread' }}
+          MARKETS: ${{ steps.plan.outputs.markets }}
         run: |
           python fetch_lines.py --sport nfl --days 12 --drop-empty --merge \
             --markets "$MARKETS" --out data/nfl.json --no-render --force \
@@ -143,11 +156,13 @@ jobs:
           done
           exit 1
         env:
-          MARKETS: >-
-            ${{ github.event.inputs.markets
-                || (github.event.schedule == '7 13 * * 2' && 'all')
-                || 'ml,spread' }}
+          MARKETS: ${{ steps.plan.outputs.markets }}
 
       - name: Note a skipped pull
         if: steps.pull.outputs.pulled != 'true'
-        run: echo "no API call was made — nothing written, nothing committed"
+        run: |
+          if [ "${{ steps.plan.outputs.skip }}" = "true" ]; then
+            echo "skipped by the recency guard — pull-lines already pulled today"
+          else
+            echo "no API call was made — nothing written, nothing committed"
+          fi
