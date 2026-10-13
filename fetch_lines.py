@@ -177,6 +177,81 @@ def _now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+ALARM_DB_WRITE = "alarm:db-write"
+
+
+def _db_alarm(state, body):
+    return {"label": ALARM_DB_WRITE,
+            "title": "[alarm] the Postgres dual-write is failing",
+            "body": body, "state": state, "throttle_hours": 24,
+            "auto_close": True}
+
+
+def dual_write_safely(rows, pull_key, sport="americanfootball_nfl"):
+    """Mirror this pull into Postgres. Never fails the run.
+
+    DUAL-WRITE PERIOD: the JSONL ledger stays authoritative. A database failure
+    here warns and is swallowed, because losing a pull we already paid credits
+    for in order to report a connection error would be a bad trade. Once a daily
+    parity check has been clean for a fortnight the JSONL side gets retired and
+    this becomes the only writer — at which point it should start failing loudly.
+
+    No DATABASE_URL configured means this is simply a no-op, so the workflows
+    behave identically before the secret exists and after it is removed.
+
+    Returns (observations_written, alarm_record_or_None). Swallowing the error
+    but staying silent would mean a database outage surfaced only through the
+    next day's parity check, so a failure raises alarm:db-write — a condition,
+    which auto-closes on the next successful write.
+    """
+    if not rows:
+        return 0, None
+    try:
+        from scripts import db
+    except ImportError as e:
+        print(f"[warn] dual-write unavailable ({e})", file=sys.stderr)
+        return 0, None
+    if not db.database_url():
+        print("[note] no DATABASE_URL — JSONL only, no dual-write", file=sys.stderr)
+        return 0, None
+    conn = None
+    try:
+        conn = db.connect()
+        w = db.Writer(conn)
+        pull_id, n = w.write_pull(rows, pull_key=pull_key, sport_key=sport)
+        print(f"[ok] dual-write: pull #{pull_id}, {n:,} observations "
+              f"(key {pull_key})", file=sys.stderr)
+        return n, _db_alarm("clear", f"The dual-write succeeded again: pull "
+                                     f"#{pull_id}, {n:,} observations.")
+    except Exception as e:                      # noqa: BLE001 - deliberate
+        print(f"::warning::dual-write to Postgres FAILED "
+              f"({type(e).__name__}: {e}) — the JSONL ledger is unaffected and "
+              f"remains authoritative")
+        print(f"[warn] dual-write failed: {type(e).__name__}: {e}", file=sys.stderr)
+        try:
+            if conn:
+                conn.rollback()
+        except Exception:                       # noqa: BLE001
+            pass
+        return 0, _db_alarm(
+            "firing",
+            f"The Postgres dual-write failed on pull `{pull_key}`:\n\n"
+            f"```\n{type(e).__name__}: {e}\n```\n\n"
+            f"**No data is lost.** `data/history.jsonl` is still authoritative "
+            f"during the dual-write period and this pull's rows are in it; the "
+            f"migration and the next successful write are both idempotent, so "
+            f"the gap backfills itself.\n\n"
+            f"Check: is the Neon project suspended or over its limits, is "
+            f"`DATABASE_URL` still valid, and is it still the DIRECT (non-pooled) "
+            f"URL?\n\nThis issue closes itself on the next successful write.")
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:                       # noqa: BLE001
+            pass
+
+
 def read_last_pull(out_path):
     """The existing file's `_meta.last_pull` map, or {}.
 
@@ -1030,6 +1105,14 @@ def main():
     ap.add_argument("--alarms-out", default=None,
                     help="write alarm records here for scripts/alarm.py to route "
                          "into GitHub issues")
+    ap.add_argument("--pull-key", default=None,
+                    help="override this pull's identity in Postgres. The default, "
+                         "'<writer>:<fetched_at>', is what the JSONL migration "
+                         "derives too, so whichever writes second is a no-op. "
+                         "Do NOT make this run-scoped: that would let the same "
+                         "pull be stored twice under different names.")
+    ap.add_argument("--no-db", action="store_true",
+                    help="skip the Postgres dual-write even if DATABASE_URL is set")
     ap.add_argument("--writer", default="manual",
                     help="who is pulling: recorded on every history row and in "
                          "_meta.last_pull[writer], which the close gate's "
@@ -1099,6 +1182,19 @@ def main():
             hist_path = Path("data/history.jsonl")
         log_history_safely(hist_path, raw, pulled_at, writer=args.writer)
         cov_alarms = coverage_alarm(raw, adapter.books, hist_path)
+        # Dual-write AFTER the JSONL append, so the authoritative side lands
+        # first and a database problem can never cost us the rows. Its alarm
+        # record joins the coverage ones, so the workflow's existing router step
+        # delivers it without a second step.
+        if not args.no_db:
+            rows_for_db = history_rows(raw, pulled_at, writer=args.writer)
+            from scripts.db import pull_key as _pull_key
+            _, db_alarm = dual_write_safely(
+                rows_for_db,
+                pull_key=args.pull_key or _pull_key(args.writer, pulled_at),
+                sport=SPORT_KEYS[args.sport][0])
+            if db_alarm:
+                cov_alarms.append(db_alarm)
         if args.alarms_out:
             try:
                 Path(args.alarms_out).parent.mkdir(parents=True, exist_ok=True)

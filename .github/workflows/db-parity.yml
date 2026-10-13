@@ -1,0 +1,57 @@
+name: db-parity
+
+# Daily during the dual-write period: does Postgres reproduce the JSONL ledger
+# EXACTLY? Compares the last 20 pulls on
+# (game, book, market, outcome, fetched_at, price, point, last_update, writer)
+# as multisets, so a swapped or duplicated row is caught, not just a missing one.
+#
+# The cutover from JSONL to Postgres waits on a clean streak here, not on a date.
+# The run stays green either way — alarm:db-parity is the signal, and it
+# auto-closes when parity returns.
+
+on:
+  schedule:
+    - cron: "40 14 * * *"       # after the 13:07 line pull has landed
+  workflow_dispatch:
+    inputs:
+      pulls:
+        description: "How many recent pulls to compare (default 20)"
+        type: string
+        required: false
+
+concurrency:
+  group: db-parity
+  cancel-in-progress: false
+
+jobs:
+  parity:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write              # the mismatch alarm opens/closes an issue
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+
+      - name: Compare Postgres against the JSONL ledger
+        env:
+          # DIRECT url, not -pooler: see scripts/db.py
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PULLS: ${{ github.event.inputs.pulls }}
+        run: |
+          ARGS=(--alarms-out "$RUNNER_TEMP/parity-alarms.json")
+          if [ -n "$PULLS" ]; then
+            ARGS+=(--pulls "$PULLS")
+          fi
+          python3 scripts/db_parity.py "${ARGS[@]}"
+
+      - name: Route the parity alarm
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALARM_ASSIGNEE: ${{ github.repository_owner }}
+        run: python3 scripts/alarm.py --from-file "$RUNNER_TEMP/parity-alarms.json"

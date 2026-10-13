@@ -1,0 +1,65 @@
+name: db-backup
+
+# Weekly pg_dump published as a GitHub Release asset.
+#
+# Neon Free gives a 6-hour history window and no instant restore, so Neon is NOT
+# a backup. Release assets are off-Neon, versioned, free, and not counted against
+# the repository size the way a committed dump would be.
+#
+# THE REPO IS PUBLIC, SO THESE DUMPS ARE PUBLIC. scripts/db_backup.py refuses to
+# run if the database contains any table outside its allowlist, and refuses to
+# publish a dump whose own object listing disagrees. Odds data only — never bets
+# or bankroll.
+
+on:
+  schedule:
+    - cron: "20 9 * * 2"        # Tuesday 09:20 UTC, away from the slate
+  workflow_dispatch:
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write            # creating a release
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+
+      # The runner's bundled client must be >= the server's major version or
+      # pg_dump refuses outright. Neon tracks recent Postgres, so pin 17.
+      - name: Install pg_dump 17
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: Dump
+        id: dump
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python3 scripts/db_backup.py --out "$RUNNER_TEMP/backups"
+
+      - name: Publish as a release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.dump.outputs.tag }}
+          FILE: ${{ steps.dump.outputs.file }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber
+          else
+            gh release create "$TAG" "$FILE" \
+              --title "Odds database backup $TAG" \
+              --notes "pg_dump --format=custom, gzipped. Odds data only; the dump's table list is verified against an allowlist before publishing. Restore with: gunzip -c <file> | pg_restore -d <target> --no-owner"
+          fi
+          gh release view "$TAG"
