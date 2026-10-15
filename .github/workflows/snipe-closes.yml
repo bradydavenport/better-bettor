@@ -87,6 +87,11 @@ jobs:
         id: snipe
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          # See pull-lines.yml: a missing DATABASE_URL here was silent too, and
+          # --require-db turns it into alarm:db-write. Rehearsal (test_mode) runs
+          # dual-write as well, tagged writer=snipe-test, because those rows land
+          # in the JSONL and parity compares the two.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ALARM_ASSIGNEE: ${{ github.repository_owner }}
@@ -154,7 +159,8 @@ jobs:
               BEFORE=$(stat -c%s data/history.jsonl 2>/dev/null || echo 0)
               python3 fetch_lines.py --sport nfl --days 12 --drop-empty --merge \
                 --markets all --out data/nfl.json --no-render --force \
-                --writer "$WRITER" --alarms-out "$RUNNER_TEMP/pull-alarms.json"
+                --writer "$WRITER" --require-db \
+                --alarms-out "$RUNNER_TEMP/pull-alarms.json"
               tail -c +$((BEFORE + 1)) data/history.jsonl > "$RUNNER_TEMP/out/new_rows.jsonl"
               cp data/nfl.json data/usage.json "$RUNNER_TEMP/out/"
               python3 scripts/alarm.py --from-file "$RUNNER_TEMP/pull-alarms.json" || true
