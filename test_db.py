@@ -175,6 +175,62 @@ class TestDbWriteAlarm(unittest.TestCase):
         self.assertTrue(alarm["auto_close"], "a condition, so it clears itself")
         self.assertIn("No data is lost", alarm["body"])
 
+    def test_require_db_turns_a_missing_url_into_an_alarm(self):
+        """Issue #7: the secret was in the db-* workflows but not the pulling
+        ones, so every pull took the silent-skip path. Nothing failed because
+        nothing was attempted, so no alarm could fire, and only the next day's
+        parity check noticed - 892 rows late."""
+        import fetch_lines as F
+        import os
+        saved = os.environ.pop("DATABASE_URL", None)
+        try:
+            n, alarm = F.dual_write_safely([{"fetched_at": "t", "writer": "w"}],
+                                           pull_key="k", require=True)
+        finally:
+            if saved:
+                os.environ["DATABASE_URL"] = saved
+        self.assertEqual(n, 0)
+        self.assertIsNotNone(alarm, "a required database that is absent must page")
+        self.assertEqual(alarm["state"], "firing")
+        self.assertEqual(alarm["label"], F.ALARM_DB_WRITE)
+        self.assertIn("DATABASE_URL", alarm["body"])
+        self.assertIn("secrets.DATABASE_URL", alarm["body"],
+                      "the body should show the fix, not just the fault")
+
+    def test_without_require_a_missing_url_stays_quiet(self):
+        """A local run, or a workflow from before the secret existed, is not a
+        fault."""
+        import fetch_lines as F
+        import os
+        saved = os.environ.pop("DATABASE_URL", None)
+        try:
+            self.assertEqual(
+                F.dual_write_safely([{"fetched_at": "t"}], pull_key="k",
+                                    require=False),
+                (0, None))
+        finally:
+            if saved:
+                os.environ["DATABASE_URL"] = saved
+
+    def test_require_db_still_alarms_when_the_url_is_present_but_broken(self):
+        """require=True must not change the failure path's behaviour."""
+        import fetch_lines as F
+        import os
+        saved = os.environ.get("DATABASE_URL")
+        os.environ["DATABASE_URL"] = "postgresql://nobody@127.0.0.1:1/nope"
+        try:
+            n, alarm = F.dual_write_safely(
+                [{"fetched_at": "t", "writer": "w", "game_id": "g",
+                  "book": "b", "market": "h2h", "outcome": "o", "price": -110}],
+                pull_key="k", require=True)
+        finally:
+            if saved is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = saved
+        self.assertEqual(n, 0)
+        self.assertEqual(alarm["state"], "firing")
+
     def test_no_database_url_raises_no_alarm_at_all(self):
         import fetch_lines as F
         import os
@@ -190,6 +246,63 @@ class TestDbWriteAlarm(unittest.TestCase):
     def test_empty_rows_raise_no_alarm(self):
         import fetch_lines as F
         self.assertEqual(F.dual_write_safely([], pull_key="k"), (0, None))
+
+
+class TestWorkflowWiring(unittest.TestCase):
+    """The invariant issue #7 violated.
+
+    DATABASE_URL was wired into the db-* workflows but not the ones that pull, so
+    every pull skipped the dual-write silently. Nothing failed, because nothing
+    was attempted. A unit test of fetch_lines.py could never have caught that —
+    the bug lived entirely in YAML — so this asserts the wiring itself.
+    """
+
+    def _fetch_lines_steps(self):
+        import yaml
+        from pathlib import Path as P
+        for f in sorted(P(".github/workflows").glob("*.yml")):
+            d = yaml.safe_load(f.read_text())
+            for job in (d.get("jobs") or {}).values():
+                for st in job.get("steps") or []:
+                    run = st.get("run") or ""
+                    if "fetch_lines.py" not in run:
+                        continue
+                    if "--self-test-limiter" in run:
+                        continue          # the limiter self-test makes no call
+                    env = {**(d.get("env") or {}), **(job.get("env") or {}),
+                           **(st.get("env") or {})}
+                    yield f.name, (st.get("name") or st.get("id")), run, env
+
+    def test_every_pulling_step_passes_DATABASE_URL(self):
+        found = list(self._fetch_lines_steps())
+        self.assertTrue(found, "no fetch_lines.py steps found — did the "
+                               "workflows move?")
+        for fname, step, _run, env in found:
+            self.assertIn("DATABASE_URL", env,
+                          f"{fname} / {step!r} pulls odds but has no "
+                          f"DATABASE_URL in its env — this is issue #7")
+
+    def test_every_pulling_step_passes_require_db(self):
+        for fname, step, run, _env in self._fetch_lines_steps():
+            self.assertIn("--require-db", run,
+                          f"{fname} / {step!r} would skip the dual-write "
+                          f"silently if the secret went missing")
+
+    def test_rosters_deliberately_has_no_database_url(self):
+        """fetch_rosters.py writes only data/rosters.json and the schema has no
+        personnel tables, so handing that workflow the secret would widen its
+        exposure for nothing."""
+        import yaml
+        from pathlib import Path as P
+        d = yaml.safe_load((P(".github/workflows") / "pull-rosters.yml").read_text())
+        blob = str(d)
+        self.assertNotIn("DATABASE_URL", blob)
+        src = (P(".") / "fetch_rosters.py").read_text()
+        for token in ("DATABASE_URL", "psycopg", "scripts.db"):
+            self.assertNotIn(token, src,
+                             f"fetch_rosters.py now references {token} — if it "
+                             f"writes to the database, this test and the "
+                             f"workflow both need revisiting")
 
 
 class TestGuards(unittest.TestCase):

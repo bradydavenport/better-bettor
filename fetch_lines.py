@@ -187,7 +187,7 @@ def _db_alarm(state, body):
             "auto_close": True}
 
 
-def dual_write_safely(rows, pull_key, sport="americanfootball_nfl"):
+def dual_write_safely(rows, pull_key, sport="americanfootball_nfl", require=False):
     """Mirror this pull into Postgres. Never fails the run.
 
     DUAL-WRITE PERIOD: the JSONL ledger stays authoritative. A database failure
@@ -196,8 +196,17 @@ def dual_write_safely(rows, pull_key, sport="americanfootball_nfl"):
     parity check has been clean for a fortnight the JSONL side gets retired and
     this becomes the only writer — at which point it should start failing loudly.
 
-    No DATABASE_URL configured means this is simply a no-op, so the workflows
-    behave identically before the secret exists and after it is removed.
+    `require=True` (--require-db) means this workflow is EXPECTED to write to
+    Postgres, so a missing DATABASE_URL is a misconfiguration and alarms rather
+    than skipping quietly. That distinction is the whole fix for issue #7: the
+    secret was wired into the db-* workflows but not into the ones that actually
+    pull, so every pull took the silent-skip path, Postgres silently stopped
+    receiving data, and no db-write alarm could fire because nothing had failed —
+    nothing had been attempted. Only the next day's parity check noticed, and
+    only because it compares against the JSONL.
+
+    Without `require`, a missing DATABASE_URL is still a quiet no-op, which is
+    what a local run or a pre-secret workflow should do.
 
     Returns (observations_written, alarm_record_or_None). Swallowing the error
     but staying silent would mean a database outage surfaced only through the
@@ -210,8 +219,37 @@ def dual_write_safely(rows, pull_key, sport="americanfootball_nfl"):
         from scripts import db
     except ImportError as e:
         print(f"[warn] dual-write unavailable ({e})", file=sys.stderr)
+        if require:
+            return 0, _db_alarm(
+                "firing",
+                f"This workflow ran with `--require-db`, but the Postgres client "
+                f"could not be imported:\n\n```\n{e}\n```\n\nIs "
+                f"`psycopg[binary]` still in `requirements.txt`, and does the "
+                f"workflow install it before pulling?")
         return 0, None
     if not db.database_url():
+        if require:
+            msg = ("this workflow ran with --require-db but DATABASE_URL is not "
+                   "in its environment")
+            print(f"::warning::dual-write skipped — {msg}")
+            print(f"[warn] {msg}", file=sys.stderr)
+            return 0, _db_alarm(
+                "firing",
+                f"**`DATABASE_URL` is missing from this workflow's environment.**\n\n"
+                f"The pull ran with `--require-db`, so Postgres was expected to "
+                f"receive it. Nothing was attempted, so nothing failed — which is "
+                f"exactly how this hid before: the secret was wired into the "
+                f"`db-*` workflows but not the ones that pull, so every pull took "
+                f"the silent-skip path and only the daily parity check noticed "
+                f"(issue #7, 892 rows).\n\n"
+                f"Add to the pulling step's `env:`\n\n"
+                f"```yaml\n"
+                f"DATABASE_URL: ${{{{ secrets.DATABASE_URL }}}}\n"
+                f"```\n\n"
+                f"**No data is lost** — `data/history.jsonl` still has this "
+                f"pull's rows, and `db-migrate.yml` backfills the gap "
+                f"idempotently. This issue closes itself on the next successful "
+                f"write.")
         print("[note] no DATABASE_URL — JSONL only, no dual-write", file=sys.stderr)
         return 0, None
     conn = None
@@ -1113,6 +1151,11 @@ def main():
                          "pull be stored twice under different names.")
     ap.add_argument("--no-db", action="store_true",
                     help="skip the Postgres dual-write even if DATABASE_URL is set")
+    ap.add_argument("--require-db", action="store_true",
+                    help="treat a missing DATABASE_URL as a fault and raise "
+                         "alarm:db-write, instead of skipping quietly. The "
+                         "pulling workflows pass this: for them, an absent "
+                         "secret is a misconfiguration, not a local run.")
     ap.add_argument("--writer", default="manual",
                     help="who is pulling: recorded on every history row and in "
                          "_meta.last_pull[writer], which the close gate's "
@@ -1192,7 +1235,8 @@ def main():
             _, db_alarm = dual_write_safely(
                 rows_for_db,
                 pull_key=args.pull_key or _pull_key(args.writer, pulled_at),
-                sport=SPORT_KEYS[args.sport][0])
+                sport=SPORT_KEYS[args.sport][0],
+                require=args.require_db)
             if db_alarm:
                 cov_alarms.append(db_alarm)
         if args.alarms_out:

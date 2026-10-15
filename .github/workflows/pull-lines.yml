@@ -91,10 +91,16 @@ jobs:
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           MARKETS: ${{ steps.plan.outputs.markets }}
+          # DIRECT Neon url. Its absence used to be SILENT: the secret was wired
+          # into the db-* workflows but not this one, so every pull skipped the
+          # dual-write without failing and Postgres quietly stopped receiving
+          # data (issue #7, 892 rows). --require-db makes that an alarm.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           python fetch_lines.py --sport nfl --days 12 --drop-empty --merge \
             --markets "$MARKETS" --out data/nfl.json --no-render --force \
-            --writer pull-lines --alarms-out "$RUNNER_TEMP/pull-alarms.json"
+            --writer pull-lines --require-db \
+            --alarms-out "$RUNNER_TEMP/pull-alarms.json"
 
       - name: Route coverage alarms to issues
         if: steps.pull.outputs.pulled == 'true'
