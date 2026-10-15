@@ -62,6 +62,27 @@ DEFAULT_STATE = "data/sniped.json"
 PRUNE_DAYS = 14
 MISS_LOOKBACK_HOURS = 6
 
+# ---- opener gate -------------------------------------------------------- #
+# NFL lines for the next week open after the current Sunday's last game. The
+# trigger is the GAME, not a clock: a fixed UTC cron would need hand-editing at
+# every DST transition, and would still be wrong for a flexed SNF.
+#
+# America/New_York via zoneinfo, never a fixed offset. zoneinfo decides only
+# which ET CALENDAR DAY a kickoff belongs to; every comparison and the +4h are
+# absolute arithmetic on aware datetimes. Mixing those up — doing +4h on a naive
+# local time — is the DST bug this exists to avoid.
+#
+# WHY fire_at IS PERSISTED, and this is load-bearing, not defensive:
+# /events DROPS a game once it has finished. Measured 2026-10-15: zero of 28
+# events had a kickoff in the past, the earliest was +23.3h, and four games our
+# own ledger recorded days earlier were absent. So at "SNF + 4h" the Sunday
+# games are GONE from /events and "the last Sunday kickoff" is empty — a gate
+# that recomputed at fire time would never fire, ever. Instead every run while
+# the Sunday is still ahead saves that week's fire_at, and the gate fires off
+# the saved value.
+OPENER_AFTER_H = 4
+ET_ZONE = "America/New_York"
+
 # How far ahead a poller is willing to wait. GitHub caps a job at 6h, so this
 # leaves headroom to finish the last pull and commit before being killed.
 POLL_LOOKAHEAD_MIN = 330          # 5.5h
@@ -186,6 +207,95 @@ def load_state(path):
     return (doc.get("sniped") or {}) if isinstance(doc, dict) else {}
 
 
+def _et():
+    from zoneinfo import ZoneInfo
+    return ZoneInfo(ET_ZONE)
+
+
+def iso_week_key(d):
+    """ISO year-week of a date, e.g. '2026-W42'.
+
+    Keyed on the SUNDAY's own ISO week, never on `now`. Sunday is the last day
+    of an ISO week, so Sunday 2026-10-18 is W42 while the Monday the gate
+    actually fires on, 10-19, is W43 — keying off `now` would record the wrong
+    week and let the opener fire twice.
+    """
+    iy, iw, _ = d.isocalendar()
+    return f"{iy}-W{iw:02d}"
+
+
+def sunday_slates(events, tz=None):
+    """{ET Sunday date: [kickoffs]} for every Sunday present in `events`.
+
+    Grouped by ET calendar date, not UTC: a 20:20 ET Sunday kickoff is 00:20Z
+    MONDAY, so grouping by UTC date would file SNF under Monday and make "the
+    last Sunday game" the 16:25 ET one instead.
+    """
+    tz = tz or _et()
+    out = {}
+    for e in events or []:
+        k = _parse(e.get("commence_time"))
+        if not k:
+            continue
+        local = k.astimezone(tz)
+        if local.weekday() == 6:                 # Sunday
+            out.setdefault(local.date(), []).append(k)
+    return {d: sorted(v) for d, v in out.items()}
+
+
+def plan_openers(events, now, opener, after_h=OPENER_AFTER_H, tz=None):
+    """Record fire_at for each visible Sunday whose last kickoff is still ahead.
+
+    Recomputes while the Sunday is in the future, so a flexed SNF moves the fire
+    time with no code change. Freezes once the last kickoff has passed, because
+    from then on /events no longer has those games to compute from.
+
+    Returns (opener, changed).
+    """
+    opener = dict(opener or {})
+    changed = False
+    for d, kicks in sunday_slates(events, tz).items():
+        key = iso_week_key(d)
+        last = kicks[-1]
+        rec = opener.get(key) or {}
+        if rec.get("triggered_at"):
+            continue                              # already fired; never revise
+        if now >= last:
+            continue                              # too late to trust /events
+        fire_at = last + timedelta(hours=after_h)
+        new = {"sunday": d.isoformat(),
+               "last_sunday_kickoff": _iso(last),
+               "fire_at": _iso(fire_at),
+               "games": len(kicks),
+               "computed_at": _iso(now)}
+        if {k: rec.get(k) for k in ("last_sunday_kickoff", "fire_at", "games")} != \
+           {k: new[k] for k in ("last_sunday_kickoff", "fire_at", "games")}:
+            opener[key] = new
+            changed = True
+    return opener, changed
+
+
+def opener_due(opener, now):
+    """(week_key, record) for an opener whose fire_at has passed, else (None, None)."""
+    for key in sorted(opener or {}):
+        rec = opener[key]
+        if rec.get("triggered_at"):
+            continue
+        fa = _parse(rec.get("fire_at"))
+        if fa and now >= fa:
+            return key, rec
+    return None, None
+
+
+def load_opener(path):
+    """The per-week opener map from the committed state file."""
+    try:
+        doc = json.loads(Path(path).read_text())
+    except (FileNotFoundError, ValueError):
+        return {}
+    return (doc.get("opener") or {}) if isinstance(doc, dict) else {}
+
+
 def load_missed(path):
     """game_ids whose miss has already been REPORTED.
 
@@ -200,14 +310,37 @@ def load_missed(path):
     return (doc.get("missed") or {}) if isinstance(doc, dict) else {}
 
 
-def save_state(path, sniped, now, missed=None):
-    """Write the ledger of sniped games, pruned so it cannot grow forever."""
+_KEEP = object()        # "leave this map as it is on disk"
+
+
+def save_state(path, sniped=_KEEP, now=None, missed=_KEEP, opener=_KEEP):
+    """Write the state file, MERGING: a map you do not pass is read from disk.
+
+    This used to default each map to None, which silently erased it. Every
+    successful close snipe called save_state(path, sniped, now) and so wiped both
+    the missed-close record and the opener's saved fire_at — the opener never
+    fired, and a reported miss could be re-reported. The missed map is usually
+    empty, which is why that half went unnoticed for weeks.
+
+    Defaulting to "keep" rather than "clear" makes the dangerous case the one you
+    have to ask for.
+    """
+    now = now or _now()
+    if sniped is _KEEP:
+        sniped = load_state(path)
+    if missed is _KEEP:
+        missed = load_missed(path)
+    if opener is _KEEP:
+        opener = load_opener(path)
+
     cutoff = now - timedelta(days=PRUNE_DAYS)
     kept = {gid: rec for gid, rec in sniped.items()
             if (_parse(rec.get("commence_time")) or now) >= cutoff}
     pruned = len(sniped) - len(kept)
     kept_missed = {gid: rec for gid, rec in (missed or {}).items()
                    if (_parse(rec.get("commence_time")) or now) >= cutoff}
+    kept_opener = {k: rec for k, rec in (opener or {}).items()
+                   if (_parse(rec.get("fire_at")) or now) >= cutoff}
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({
@@ -220,6 +353,15 @@ def save_state(path, sniped, now, missed=None):
                       "Odds API event id. Entries are dropped "
                       f"{PRUNE_DAYS} days after kickoff. Written only after a "
                       "pull succeeds — never before, so a failed pull retries."),
+            "opener_note": ("per-ISO-week record of the next-week line opener, "
+                            "keyed on the SUNDAY's ISO week (Sunday is the last "
+                            "day of an ISO week, so the Monday it fires on is a "
+                            "different week). fire_at is the last Sunday kickoff "
+                            "in America/New_York plus "
+                            f"{OPENER_AFTER_H}h, saved BEFORE those games "
+                            "disappear: /events drops a game once it finishes, so "
+                            "a gate that recomputed at fire time would never "
+                            "fire. triggered_at present = that week is done."),
             "missed_note": ("games whose close was NEVER captured and whose miss "
                             "has already been reported as a GitHub issue comment. "
                             "Tracked so the 6h lookback reports each game once "
@@ -229,6 +371,7 @@ def save_state(path, sniped, now, missed=None):
         "sniped": dict(sorted(kept.items(), key=lambda kv: kv[1].get("commence_time") or "")),
         "missed": dict(sorted(kept_missed.items(),
                              key=lambda kv: kv[1].get("commence_time") or "")),
+        "opener": dict(sorted(kept_opener.items())),
     }, indent=2) + "\n")
     return len(kept), pruned
 
@@ -439,6 +582,17 @@ def main():
                     help="with --mark: the horizon the gate decided (ISO 8601). "
                          "Passing it through makes marking exactly reproduce the "
                          "decision instead of recomputing against a later clock.")
+    ap.add_argument("--mark-opener", default=None, metavar="WEEK",
+                    help="record that WEEK's opener pull succeeded. Deliberately "
+                         "separate from --mark: an opener must NEVER mark games "
+                         "as sniped, or the gate would refuse to pull their "
+                         "actual closes and a whole week of closing lines would "
+                         "be lost to a feature meant to add data.")
+    ap.add_argument("--no-opener", action="store_true",
+                    help="skip the opener gate entirely")
+    ap.add_argument("--opener-after-hours", type=float, default=OPENER_AFTER_H,
+                    help=f"hours after the last Sunday kickoff (default "
+                         f"{OPENER_AFTER_H})")
     ap.add_argument("--ids-out", default=None,
                     help="with --mark: also write the captured game_ids here, so "
                          "a replay after a rejected push can re-apply them")
@@ -555,6 +709,24 @@ def main():
     due, horizon, missed = decide(events, sniped, now, args.window, args.grace)
     waiting = pollable(events, sniped, now, args.lookahead)
 
+    # Opener: record fire_at for any Sunday still ahead, then see if one is due.
+    opener_week = opener_rec = None
+    if not args.no_opener:
+        opener = load_opener(args.state)
+        opener, changed = plan_openers(events, now, opener,
+                                       after_h=args.opener_after_hours)
+        if changed:
+            save_state(args.state, sniped, now,
+                       missed=load_missed(args.state), opener=opener)
+            for k in sorted(opener):
+                if not opener[k].get("triggered_at"):
+                    print(f"[ok] opener {k}: last Sunday kickoff "
+                          f"{opener[k]['last_sunday_kickoff']}, fires "
+                          f"{opener[k]['fire_at']} ({opener[k]['games']} games)",
+                          file=sys.stderr)
+            set_output("state_changed", "true")
+        opener_week, opener_rec = opener_due(opener, now)
+
     # Missed closes are EVENTS. Report each game exactly once, then remember it,
     # so the 6h lookback does not re-report the same game on all 24 runs inside
     # the window. No throttle: a genuinely new miss should page immediately.
@@ -600,6 +772,22 @@ def main():
             print(f"[ok] wrote {len(alarms)} alarm record(s) to {args.alarms_out}",
                   file=sys.stderr)
 
+    if args.mark_opener:
+        opener = load_opener(args.state)
+        rec = dict(opener.get(args.mark_opener) or {})
+        rec["triggered_at"] = _iso(now)
+        opener[args.mark_opener] = rec
+        # NOTE: sniped is passed through untouched. An opener records only its own
+        # week; marking games sniped here would make the close gate skip them.
+        save_state(args.state, load_state(args.state), now,
+                   missed=load_missed(args.state), opener=opener)
+        print(f"[ok] opener for {args.mark_opener} recorded as pulled "
+              f"(fire_at was {rec.get('fire_at')}) -> {args.state}", file=sys.stderr)
+        print(f"[ok] games sniped: unchanged — an opener is not a close",
+              file=sys.stderr)
+        flush_alarms()
+        return 0
+
     if args.mark:
         h = _parse(args.horizon) or horizon
         if not h:
@@ -633,6 +821,20 @@ def main():
         flush_alarms()
         return 0
 
+    # Closes are time-critical and openers are not, so a close always wins a
+    # tie; the opener simply fires on the next 10-minute tick.
+    if not due and opener_week:
+        print(f"[ok] gate OPEN for the {opener_week} OPENER — the last Sunday "
+              f"kickoff ({opener_rec['last_sunday_kickoff']}) was over "
+              f"{args.opener_after_hours:g}h ago, so next week's lines are up",
+              file=sys.stderr)
+        set_output("pull", "true")
+        set_output("pull_reason", "opener")
+        set_output("opener_week", opener_week)
+        set_output("keep_polling", "false")
+        flush_alarms()
+        return 0
+
     if not due:
         # Say WHY it is closed. "next kickoff in 2821 min, window is 2900 min"
         # reads as a contradiction unless the message names the real reason —
@@ -657,6 +859,7 @@ def main():
         print(f"[skip] gate closed — {when}, window is {args.window} min. "
               f"No API pull, no write, no commit.", file=sys.stderr)
         set_output("pull", "false")
+        set_output("pull_reason", "none")
         # Tell the caller whether sleeping is worth it, so a poller waits for a
         # kickoff that is coming and exits when nothing is.
         set_output("keep_polling", "true" if waiting else "false")
@@ -675,6 +878,7 @@ def main():
         print(f"     T-{mins:4.0f} min  {e.get('away_team')} @ {e.get('home_team')}",
               file=sys.stderr)
     set_output("pull", "true")
+    set_output("pull_reason", "close")
     set_output("horizon", _iso(horizon))
     set_output("game_count", str(len(captured)))
     # More games may come later in this poller's lifetime; the loop re-enters.
