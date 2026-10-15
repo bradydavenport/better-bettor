@@ -1,25 +1,25 @@
 {
   "_meta": {
-    "fetched_at": "2026-10-11T06:40:59Z",
+    "fetched_at": "2026-10-15T05:36:19Z",
     "source": "nflverse depth_charts (QB) + ESPN injuries (OUT/DOUBTFUL/IR)",
     "sources": {
       "qb": {
         "name": "nflverse-data depth_charts release",
         "url": "https://github.com/nflverse/nflverse-data/releases/download/depth_charts/depth_charts_2026.csv.gz",
-        "snapshot_at": "2026-10-11T06:01:52Z",
-        "compared_against": "2026-10-04T13:09:16Z",
-        "fetched_at": "2026-10-11T06:40:59Z"
+        "snapshot_at": "2026-10-14T12:51:31Z",
+        "compared_against": "2026-10-08T06:01:40Z",
+        "fetched_at": "2026-10-15T05:36:19Z"
       },
       "injuries": {
         "name": "ESPN public injuries API",
         "url": "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/injuries",
-        "fetched_at": "2026-10-11T06:41:01Z",
-        "source_timestamp": "2026-10-11T06:40:58Z",
+        "fetched_at": "2026-10-15T05:36:22Z",
+        "source_timestamp": "2026-10-15T05:36:15Z",
         "note": "undocumented ESPN endpoint; no key required, no stability guarantee"
       }
     },
     "season": 2026,
-    "week": 5,
+    "week": 6,
     "is_backfill": false,
     "team_count": 32,
     "teams_missing_qb": [],
@@ -34,33 +34,18 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [
         {
-          "name": "Andrew Wingard",
+          "name": "Wydett Williams Jr.",
           "pos": "S",
-          "reason": "Knee (Bruise)",
-          "as_of": "2026-10-09T22:16Z"
-        },
-        {
-          "name": "Marvin Harrison Jr.",
-          "pos": "WR",
-          "reason": "Coach's Decision",
-          "as_of": "2026-10-10T15:35Z"
+          "reason": "Concussion (Concussion)",
+          "as_of": "2026-10-15T01:25Z"
         }
       ],
       "doubtful": [],
       "ir": [
-        {
-          "name": "Hunter Long",
-          "pos": "TE",
-          "status": "Injured Reserve",
-          "reason": "Knee",
-          "eligible_week": 9,
-          "expected_return": "2026-11-08",
-          "as_of": "2026-10-06T23:22Z"
-        },
         {
           "name": "Isaiah Adams",
           "pos": "G",
@@ -71,16 +56,25 @@
           "as_of": "2026-10-11T03:58Z"
         },
         {
-          "name": "Paris Johnson Jr.",
-          "pos": "OT",
+          "name": "James Conner",
+          "pos": "RB",
           "status": "Injured Reserve",
-          "reason": "Biceps (Surgery)",
+          "reason": "Foot (Surgery)",
+          "eligible_week": 7,
+          "expected_return": "2026-10-25",
+          "as_of": "2026-10-13T19:00Z"
+        },
+        {
+          "name": "Kitan Crawford",
+          "pos": "S",
+          "status": "Injured Reserve",
+          "reason": "Ankle",
           "eligible_week": null,
-          "expected_return": "2027-02-15",
-          "as_of": "2026-10-07T00:29Z"
+          "expected_return": null,
+          "as_of": "2026-10-15T01:09Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "ATL": {
       "qb": {
@@ -88,16 +82,9 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
-        {
-          "name": "Za'Darius Smith",
-          "pos": "DE",
-          "reason": "Concussion (Concussion)",
-          "as_of": "2026-10-11T01:12Z"
-        }
-      ],
+      "out": [],
       "doubtful": [],
       "ir": [
         {
@@ -110,58 +97,30 @@
           "as_of": "2026-10-11T03:43Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "BAL": {
       "qb": {
         "name": "Lamar Jackson",
         "changed_from_last_week": false,
         "previous_name": null,
-        "status": "Out",
-        "as_of": "2026-10-11T06:01:52Z"
+        "status": "Questionable",
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
-        {
-          "name": "Cam Jurgens",
-          "pos": "C",
-          "reason": "Concussion (Concussion)",
-          "as_of": "2026-10-10T02:13Z"
-        },
-        {
-          "name": "Lamar Jackson",
-          "pos": "QB",
-          "reason": "Ankle (Sprain)",
-          "as_of": "2026-10-09T17:34Z"
-        },
-        {
-          "name": "Trey Hendrickson",
-          "pos": "LB",
-          "reason": "Finger (Surgery)",
-          "as_of": "2026-10-10T00:05Z"
-        }
-      ],
+      "out": [],
       "doubtful": [],
       "ir": [
-        {
-          "name": "Durham Smythe",
-          "pos": "TE",
-          "status": "Injured Reserve",
-          "reason": "Achilles (Surgery)",
-          "eligible_week": null,
-          "expected_return": "2027-02-15",
-          "as_of": "2026-10-07T23:18Z"
-        },
         {
           "name": "Ja'Kobi Lane",
           "pos": "WR",
           "status": "Injured Reserve",
           "reason": "Wrist (Surgery)",
-          "eligible_week": 6,
-          "expected_return": "2026-10-18",
-          "as_of": "2026-10-09T17:56Z"
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-14T22:37Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "BUF": {
       "qb": {
@@ -169,25 +128,12 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
-        {
-          "name": "Ed Oliver",
-          "pos": "DT",
-          "reason": "Knee",
-          "as_of": "2026-10-10T18:55Z"
-        },
-        {
-          "name": "Joshua Palmer",
-          "pos": "WR",
-          "reason": "Shoulder",
-          "as_of": "2026-10-10T18:00Z"
-        }
-      ],
+      "out": [],
       "doubtful": [],
       "ir": [],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "CAR": {
       "qb": {
@@ -195,7 +141,7 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [
         {
@@ -203,27 +149,39 @@
           "pos": "OT",
           "reason": "Knee (Surgery)",
           "as_of": "2026-10-06T01:04Z"
+        },
+        {
+          "name": "Taylor Moton",
+          "pos": "OT",
+          "reason": "Illness",
+          "as_of": "2026-10-15T01:17Z"
+        },
+        {
+          "name": "Tershawn Wharton",
+          "pos": "DT",
+          "reason": "Neck (Surgery)",
+          "as_of": "2026-10-13T21:01Z"
         }
       ],
       "doubtful": [],
       "ir": [
         {
-          "name": "Mike Jackson",
-          "pos": "CB",
+          "name": "Cam Jackson",
+          "pos": "DT",
           "status": "Injured Reserve",
-          "reason": "Groin (Surgery)",
-          "eligible_week": 11,
-          "expected_return": "2026-11-22",
-          "as_of": "2026-09-30T19:44Z"
+          "reason": "Shoulder (Surgery)",
+          "eligible_week": null,
+          "expected_return": "2027-02-15",
+          "as_of": "2026-10-14T01:16Z"
         },
         {
           "name": "Trevor Etienne",
           "pos": "RB",
           "status": "Injured Reserve",
           "reason": "Ankle (Sprain)",
-          "eligible_week": 6,
-          "expected_return": "2026-10-18",
-          "as_of": "2026-10-05T23:29Z"
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-14T23:23Z"
         },
         {
           "name": "Xavier Legette",
@@ -235,7 +193,7 @@
           "as_of": "2026-10-03T20:15Z"
         }
       ],
-      "updated_at": "2026-10-08T07:01:31Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "CHI": {
       "qb": {
@@ -243,47 +201,51 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Questionable",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [
-        {
-          "name": "Keyshaun Elliott",
-          "pos": "LB",
-          "reason": "Quadriceps",
-          "as_of": "2026-10-10T02:01Z"
-        },
-        {
-          "name": "Kyle Monangai",
-          "pos": "RB",
-          "reason": "Toe (Sprain)",
-          "as_of": "2026-10-09T17:06Z"
-        },
         {
           "name": "Kyler Gordon",
           "pos": "CB",
           "reason": "Calf",
-          "as_of": "2026-10-10T19:40Z"
-        },
-        {
-          "name": "Shemar Turner",
-          "pos": "DT",
-          "reason": "Knee - ACL (Surgery)",
-          "as_of": "2026-10-10T19:58Z"
+          "as_of": "2026-10-15T00:36Z"
         }
       ],
-      "doubtful": [],
+      "doubtful": [
+        {
+          "name": "Dayo Odeyingbo",
+          "pos": "DE",
+          "reason": "Quadriceps",
+          "as_of": "2026-10-14T21:49Z"
+        },
+        {
+          "name": "T.J. Edwards",
+          "pos": "LB",
+          "reason": "Hamstring",
+          "as_of": "2026-10-15T00:21Z"
+        }
+      ],
       "ir": [
         {
           "name": "Anthony Johnson Jr.",
           "pos": "S",
           "status": "Injured Reserve",
           "reason": "Undisclosed",
-          "eligible_week": 6,
-          "expected_return": "2026-10-18",
-          "as_of": "2026-10-11T06:12Z"
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-15T05:01Z"
+        },
+        {
+          "name": "Montez Sweat",
+          "pos": "DE",
+          "status": "Suspension",
+          "reason": "Suspension",
+          "eligible_week": 8,
+          "expected_return": "2026-11-02",
+          "as_of": "2026-10-13T20:16Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "CIN": {
       "qb": {
@@ -291,29 +253,29 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [
         {
-          "name": "Kyle Dugger",
-          "pos": "S",
-          "reason": "Quadriceps",
-          "as_of": "2026-10-10T00:16Z"
+          "name": "Tanner Hudson",
+          "pos": "TE",
+          "reason": "Pectoral (Strain)",
+          "as_of": "2026-10-13T15:52Z"
         }
       ],
       "doubtful": [],
       "ir": [
         {
-          "name": "Jalen Davis",
-          "pos": "CB",
+          "name": "Swayze Bozeman",
+          "pos": "LB",
           "status": "Injured Reserve",
-          "reason": "Hamstring",
-          "eligible_week": 9,
-          "expected_return": "2026-11-08",
-          "as_of": "2026-09-29T23:16Z"
+          "reason": "Forearm (Fracture)",
+          "eligible_week": 11,
+          "expected_return": "2026-11-23",
+          "as_of": "2026-10-12T21:04Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "CLE": {
       "qb": {
@@ -321,62 +283,56 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
-        {
-          "name": "Carsen Ryan",
-          "pos": "TE",
-          "reason": "Calf",
-          "as_of": "2026-10-10T00:29Z"
-        },
+      "out": [],
+      "doubtful": [
         {
           "name": "Mason Graham",
           "pos": "DT",
           "reason": "Knee - MCL (Sprain)",
-          "as_of": "2026-10-10T00:17Z"
-        },
-        {
-          "name": "Mike Hall Jr.",
-          "pos": "DT",
-          "reason": "Ankle",
-          "as_of": "2026-10-10T00:23Z"
-        },
-        {
-          "name": "Teven Jenkins",
-          "pos": "G",
-          "reason": "Back",
-          "as_of": "2026-10-10T02:09Z"
-        },
-        {
-          "name": "Tylan Wallace",
-          "pos": "WR",
-          "reason": "Knee",
-          "as_of": "2026-10-10T00:35Z"
+          "as_of": "2026-10-14T21:51Z"
         }
       ],
-      "doubtful": [],
       "ir": [
         {
           "name": "Dillon Gabriel",
           "pos": "QB",
           "status": "Injured Reserve",
           "reason": "Back",
-          "eligible_week": 6,
-          "expected_return": "2026-10-18",
+          "eligible_week": null,
+          "expected_return": null,
           "as_of": "2026-10-10T00:37Z"
+        },
+        {
+          "name": "Dylan Sampson",
+          "pos": "RB",
+          "status": "Injured Reserve",
+          "reason": "Knee",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-14T21:59Z"
         },
         {
           "name": "Kalia Davis",
           "pos": "DT",
           "status": "Injured Reserve",
           "reason": "Quadriceps",
-          "eligible_week": 6,
-          "expected_return": "2026-10-18",
+          "eligible_week": null,
+          "expected_return": null,
           "as_of": "2026-10-10T02:57Z"
+        },
+        {
+          "name": "Raheim Sanders",
+          "pos": "RB",
+          "status": "Injured Reserve",
+          "reason": "Hip",
+          "eligible_week": 10,
+          "expected_return": "2026-11-15",
+          "as_of": "2026-10-13T21:00Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "DAL": {
       "qb": {
@@ -384,74 +340,12 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
-        {
-          "name": "Ajani Cornelius",
-          "pos": "OT",
-          "reason": "Coach's Decision",
-          "as_of": "2026-10-08T22:49Z"
-        },
-        {
-          "name": "Camden Brown",
-          "pos": "WR",
-          "reason": "Coach's Decision",
-          "as_of": "2026-10-08T22:49Z"
-        },
-        {
-          "name": "Cobie Durant",
-          "pos": "CB",
-          "reason": "Hamstring (Strain)",
-          "as_of": "2026-10-08T22:49Z"
-        },
-        {
-          "name": "DeMarvion Overshown",
-          "pos": "LB",
-          "reason": "Hamstring (Strain)",
-          "as_of": "2026-10-08T22:49Z"
-        },
-        {
-          "name": "Drew Shelton",
-          "pos": "OT",
-          "reason": "Hamstring",
-          "as_of": "2026-10-08T00:26Z"
-        },
-        {
-          "name": "James Houston",
-          "pos": "LB",
-          "reason": "Coach's Decision",
-          "as_of": "2026-10-08T22:49Z"
-        },
-        {
-          "name": "Joey Porter Jr.",
-          "pos": "CB",
-          "reason": "Illness",
-          "as_of": "2026-10-08T22:45Z"
-        }
-      ],
+      "out": [],
       "doubtful": [],
-      "ir": [
-        {
-          "name": "Jalen Thompson",
-          "pos": "S",
-          "status": "Injured Reserve",
-          "reason": "Hamstring",
-          "eligible_week": 8,
-          "expected_return": "2026-11-01",
-          "as_of": "2026-09-30T18:33Z"
-        },
-        {
-          "name": "Jonathan Bullard",
-          "pos": "DT",
-          "status": "Injured Reserve",
-          "reason": "Calf",
-          "eligible_week": 8,
-          "expected_return": "2026-11-01",
-          "as_of": "2026-10-01T00:58Z"
-        }
-      ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "ir": [],
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "DEN": {
       "qb": {
@@ -459,33 +353,24 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [
         {
           "name": "Pat Surtain II",
           "pos": "CB",
           "reason": "Ankle (Sprain)",
-          "as_of": "2026-10-10T16:13Z"
+          "as_of": "2026-10-14T23:52Z"
         },
         {
-          "name": "Riley Moss",
-          "pos": "CB",
-          "reason": "Ribs",
-          "as_of": "2026-10-10T16:16Z"
+          "name": "Talanoa Hufanga",
+          "pos": "S",
+          "reason": "Ankle",
+          "as_of": "2026-10-14T18:06Z"
         }
       ],
       "doubtful": [],
       "ir": [
-        {
-          "name": "Jonah Coleman",
-          "pos": "RB",
-          "status": "Injured Reserve",
-          "reason": "Ankle (Sprain)",
-          "eligible_week": 7,
-          "expected_return": "2026-10-25",
-          "as_of": "2026-09-26T20:36Z"
-        },
         {
           "name": "Pat Bryant",
           "pos": "WR",
@@ -496,7 +381,7 @@
           "as_of": "2026-10-09T21:47Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "DET": {
       "qb": {
@@ -504,15 +389,9 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [
-        {
-          "name": "Ben Bartch",
-          "pos": "G",
-          "reason": "Foot",
-          "as_of": "2026-10-10T02:32Z"
-        },
         {
           "name": "Brian Branch",
           "pos": "S",
@@ -520,13 +399,20 @@
           "as_of": "2026-10-10T00:56Z"
         },
         {
-          "name": "Rock Ya-Sin",
-          "pos": "CB",
-          "reason": "Hamstring",
-          "as_of": "2026-10-10T01:01Z"
+          "name": "Tom Kennedy",
+          "pos": "WR",
+          "reason": "Knee - MCL (Surgery)",
+          "as_of": "2026-10-12T23:31Z"
         }
       ],
-      "doubtful": [],
+      "doubtful": [
+        {
+          "name": "Devin White",
+          "pos": "LB",
+          "reason": "Forearm (Surgery)",
+          "as_of": "2026-10-12T23:37Z"
+        }
+      ],
       "ir": [
         {
           "name": "Cade Mays",
@@ -536,18 +422,9 @@
           "eligible_week": 7,
           "expected_return": "2026-10-25",
           "as_of": "2026-10-10T02:36Z"
-        },
-        {
-          "name": "Thomas Harper",
-          "pos": "S",
-          "status": "Injured Reserve",
-          "reason": "Ankle",
-          "eligible_week": 8,
-          "expected_return": "2026-11-01",
-          "as_of": "2026-09-26T21:03Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "GB": {
       "qb": {
@@ -555,30 +432,29 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [
+        {
+          "name": "Javon Hargrave",
+          "pos": "DT",
+          "reason": "Achilles (Surgery)",
+          "as_of": "2026-10-12T16:27Z"
+        },
+        {
+          "name": "Jordon Riley",
+          "pos": "DT",
+          "reason": "Achilles",
+          "as_of": "2026-10-15T01:53Z"
+        },
         {
           "name": "Micah Parsons",
           "pos": "DE",
           "reason": "Knee - ACL (Surgery)",
-          "as_of": "2026-10-05T21:10Z"
+          "as_of": "2026-10-12T17:41Z"
         }
       ],
-      "doubtful": [
-        {
-          "name": "Aaron Banks",
-          "pos": "G",
-          "reason": "Toe",
-          "as_of": "2026-10-10T02:22Z"
-        },
-        {
-          "name": "Jacob Monk",
-          "pos": "C",
-          "reason": "Quadriceps",
-          "as_of": "2026-10-10T02:27Z"
-        }
-      ],
+      "doubtful": [],
       "ir": [
         {
           "name": "Chris Brooks",
@@ -588,68 +464,63 @@
           "eligible_week": 9,
           "expected_return": "2026-11-08",
           "as_of": "2026-10-10T20:06Z"
-        },
-        {
-          "name": "Edgerrin Cooper",
-          "pos": "LB",
-          "status": "Injured Reserve",
-          "reason": "Achilles (Surgery)",
-          "eligible_week": null,
-          "expected_return": "2027-02-15",
-          "as_of": "2026-10-06T23:22Z"
-        },
-        {
-          "name": "Savion Williams",
-          "pos": "WR",
-          "status": "Injured Reserve",
-          "reason": "Ankle (Sprain)",
-          "eligible_week": 6,
-          "expected_return": "2026-10-18",
-          "as_of": "2026-10-09T22:04Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "HOU": {
       "qb": {
         "name": "C.J. Stroud",
         "changed_from_last_week": false,
         "previous_name": null,
-        "status": null,
-        "as_of": "2026-10-11T06:01:52Z"
+        "status": "Active",
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [],
-      "doubtful": [],
-      "ir": [
+      "doubtful": [
         {
-          "name": "Braden Smith",
-          "pos": "OT",
-          "status": "Injured Reserve",
-          "reason": "Foot (Plantar Fasciitis)",
-          "eligible_week": 6,
-          "expected_return": "2026-10-18",
-          "as_of": "2026-10-11T03:19Z"
+          "name": "David Montgomery",
+          "pos": "RB",
+          "reason": "Groin",
+          "as_of": "2026-10-14T18:04Z"
         },
         {
-          "name": "Jaylin Smith",
+          "name": "Jalen Pitre",
+          "pos": "S",
+          "reason": "Shoulder - AC Joint (Sprain)",
+          "as_of": "2026-10-14T00:45Z"
+        }
+      ],
+      "ir": [
+        {
+          "name": "Henry To'oTo'o",
+          "pos": "LB",
+          "status": "Injured Reserve",
+          "reason": "Shoulder",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-14T22:11Z"
+        },
+        {
+          "name": "Ja'Marcus Ingram",
           "pos": "CB",
           "status": "Injured Reserve",
-          "reason": "Hamstring (Strain)",
-          "eligible_week": 10,
-          "expected_return": "2026-11-15",
-          "as_of": "2026-10-07T00:29Z"
+          "reason": "Elbow (Dislocated)",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-15T01:04Z"
         },
         {
           "name": "Tank Dell",
           "pos": "WR",
           "status": "Injured Reserve",
           "reason": "Knee - ACL + MCL (Surgery)",
-          "eligible_week": 6,
-          "expected_return": "2026-10-18",
-          "as_of": "2026-10-09T21:09Z"
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-14T23:32Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "IND": {
       "qb": {
@@ -657,30 +528,20 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
-        {
-          "name": "Ashton Dulin",
-          "pos": "WR",
-          "reason": "Hamstring",
-          "as_of": "2026-10-09T23:53Z"
-        },
-        {
-          "name": "Darius Slayton",
-          "pos": "WR",
-          "reason": "Knee",
-          "as_of": "2026-10-10T15:55Z"
-        },
-        {
-          "name": "Jaylon Carlies",
-          "pos": "LB",
-          "reason": "Ribs",
-          "as_of": "2026-10-10T02:08Z"
-        }
-      ],
+      "out": [],
       "doubtful": [],
       "ir": [
+        {
+          "name": "Alec Pierce",
+          "pos": "WR",
+          "status": "Injured Reserve",
+          "reason": "Heel",
+          "eligible_week": 7,
+          "expected_return": "2026-10-25",
+          "as_of": "2026-10-15T00:54Z"
+        },
         {
           "name": "Arden Key",
           "pos": "DE",
@@ -695,12 +556,12 @@
           "pos": "TE",
           "status": "Injured Reserve",
           "reason": "Thumb",
-          "eligible_week": 6,
-          "expected_return": "2026-10-18",
+          "eligible_week": null,
+          "expected_return": null,
           "as_of": "2026-10-09T23:56Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "JAX": {
       "qb": {
@@ -708,29 +569,22 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [],
-      "doubtful": [
-        {
-          "name": "Eric Murray",
-          "pos": "S",
-          "reason": "Concussion (Concussion)",
-          "as_of": "2026-10-10T00:02Z"
-        }
-      ],
+      "doubtful": [],
       "ir": [
         {
-          "name": "Caleb Ransaw",
-          "pos": "S",
+          "name": "Anton Harrison",
+          "pos": "OT",
           "status": "Injured Reserve",
-          "reason": "Knee",
-          "eligible_week": 10,
-          "expected_return": "2026-11-15",
-          "as_of": "2026-10-07T00:42Z"
+          "reason": "Knee (Surgery)",
+          "eligible_week": 11,
+          "expected_return": "2026-11-22",
+          "as_of": "2026-10-13T19:12Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "KC": {
       "qb": {
@@ -738,97 +592,61 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
+      "out": [],
+      "doubtful": [],
+      "ir": [
         {
           "name": "Tyquan Thornton",
           "pos": "WR",
+          "status": "Injured Reserve",
           "reason": "Ankle (Surgery)",
-          "as_of": "2026-10-05T20:51Z"
+          "eligible_week": null,
+          "expected_return": "2027-01-17",
+          "as_of": "2026-10-13T18:29Z"
         }
       ],
-      "doubtful": [],
-      "ir": [],
-      "updated_at": "2026-10-08T07:01:31Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "LAC": {
       "qb": {
         "name": "Justin Herbert",
         "changed_from_last_week": false,
         "previous_name": null,
-        "status": null,
-        "as_of": "2026-10-11T06:01:52Z"
+        "status": "Active",
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
+      "out": [],
+      "doubtful": [
         {
-          "name": "Brenen Thompson",
+          "name": "Tre' Harris",
           "pos": "WR",
-          "reason": "Quadriceps",
-          "as_of": "2026-10-10T00:37Z"
-        },
-        {
-          "name": "Derwin James Jr.",
-          "pos": "S",
           "reason": "Hamstring",
-          "as_of": "2026-10-10T00:28Z"
-        },
-        {
-          "name": "Donte Jackson",
-          "pos": "CB",
-          "reason": "Hamstring",
-          "as_of": "2026-10-10T00:25Z"
-        },
-        {
-          "name": "Joe Alt",
-          "pos": "OT",
-          "reason": "Neck",
-          "as_of": "2026-10-10T02:15Z"
-        },
-        {
-          "name": "Kayode Awosika",
-          "pos": "G",
-          "reason": "Lower Leg",
-          "as_of": "2026-10-10T02:18Z"
-        },
-        {
-          "name": "Quentin Johnston",
-          "pos": "WR",
-          "reason": "Chest",
-          "as_of": "2026-10-09T20:43Z"
+          "as_of": "2026-10-14T22:33Z"
         }
       ],
-      "doubtful": [],
       "ir": [
         {
-          "name": "Rashawn Slater",
-          "pos": "OT",
+          "name": "Denzel Perryman",
+          "pos": "LB",
           "status": "Injured Reserve",
-          "reason": "Ankle (Sprain)",
-          "eligible_week": 10,
-          "expected_return": "2026-11-16",
-          "as_of": "2026-10-10T02:51Z"
+          "reason": "Undisclosed",
+          "eligible_week": 8,
+          "expected_return": "2026-11-01",
+          "as_of": "2026-10-15T01:08Z"
         },
         {
-          "name": "Trevor Penning",
-          "pos": "G",
+          "name": "KeAndre Lambert-Smith",
+          "pos": "WR",
           "status": "Injured Reserve",
-          "reason": "Concussion (Concussion)",
-          "eligible_week": 10,
-          "expected_return": "2026-11-16",
-          "as_of": "2026-10-11T03:33Z"
-        },
-        {
-          "name": "Trey Lance",
-          "pos": "QB",
-          "status": "Injured Reserve",
-          "reason": "Groin",
-          "eligible_week": 10,
-          "expected_return": "2026-11-16",
-          "as_of": "2026-10-11T00:57Z"
+          "reason": "Hamstring",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-13T22:20Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "LAR": {
       "qb": {
@@ -836,11 +654,20 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [],
       "doubtful": [],
       "ir": [
+        {
+          "name": "Alaric Jackson",
+          "pos": "OT",
+          "status": "Suspension",
+          "reason": "Suspension",
+          "eligible_week": 7,
+          "expected_return": "2026-10-25",
+          "as_of": "2026-10-15T01:36Z"
+        },
         {
           "name": "Myles Garrett",
           "pos": "DE",
@@ -848,19 +675,10 @@
           "reason": "Knee (Surgery)",
           "eligible_week": 7,
           "expected_return": "2026-10-25",
-          "as_of": "2026-10-10T20:19Z"
-        },
-        {
-          "name": "Terrance Ferguson",
-          "pos": "TE",
-          "status": "Injured Reserve",
-          "reason": "Ankle (Sprain)",
-          "eligible_week": 8,
-          "expected_return": "2026-11-01",
-          "as_of": "2026-10-07T17:52Z"
+          "as_of": "2026-10-14T01:14Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "LV": {
       "qb": {
@@ -868,35 +686,31 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
-        {
-          "name": "Jalen Nailor",
-          "pos": "WR",
-          "reason": "Concussion (Concussion)",
-          "as_of": "2026-10-09T19:01Z"
-        },
-        {
-          "name": "Trey Zuhn III",
-          "pos": "C",
-          "reason": "Knee (Abrasion)",
-          "as_of": "2026-10-10T02:03Z"
-        }
-      ],
+      "out": [],
       "doubtful": [],
       "ir": [
+        {
+          "name": "Carter Runyon",
+          "pos": "TE",
+          "status": "Injured Reserve",
+          "reason": "Lower Body",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-14T23:12Z"
+        },
         {
           "name": "Dont'e Thornton Jr.",
           "pos": "WR",
           "status": "Injured Reserve",
           "reason": "Hamstring",
-          "eligible_week": 6,
-          "expected_return": "2026-10-18",
-          "as_of": "2026-10-09T23:15Z"
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-15T00:37Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "MIA": {
       "qb": {
@@ -904,33 +718,9 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [
-        {
-          "name": "Caleb Douglas",
-          "pos": "WR",
-          "reason": "Ankle",
-          "as_of": "2026-10-09T20:46Z"
-        },
-        {
-          "name": "Justin Joly",
-          "pos": "TE",
-          "reason": "Concussion (Concussion)",
-          "as_of": "2026-10-10T02:41Z"
-        },
-        {
-          "name": "Reese Taylor",
-          "pos": "CB",
-          "reason": "Quadriceps",
-          "as_of": "2026-10-06T01:00Z"
-        },
-        {
-          "name": "Robert Beal Jr.",
-          "pos": "DE",
-          "reason": "Hamstring",
-          "as_of": "2026-10-10T02:58Z"
-        },
         {
           "name": "Storm Duck",
           "pos": "CB",
@@ -940,7 +730,7 @@
       ],
       "doubtful": [],
       "ir": [],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "MIN": {
       "qb": {
@@ -948,22 +738,9 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
-        {
-          "name": "Charles Demmings",
-          "pos": "CB",
-          "reason": "Hamstring",
-          "as_of": "2026-10-10T01:52Z"
-        },
-        {
-          "name": "Christian Darrisaw",
-          "pos": "OT",
-          "reason": "Concussion (Concussion)",
-          "as_of": "2026-10-10T01:48Z"
-        }
-      ],
+      "out": [],
       "doubtful": [],
       "ir": [
         {
@@ -985,7 +762,7 @@
           "as_of": "2026-09-30T00:26Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "NE": {
       "qb": {
@@ -993,34 +770,9 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": null,
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
-        {
-          "name": "Carlton Davis III",
-          "pos": "CB",
-          "reason": "Neck",
-          "as_of": "2026-10-09T23:03Z"
-        },
-        {
-          "name": "Channing Canada",
-          "pos": "CB",
-          "reason": "Hamstring",
-          "as_of": "2026-10-10T01:54Z"
-        },
-        {
-          "name": "Christian Gonzalez",
-          "pos": "CB",
-          "reason": "Shoulder",
-          "as_of": "2026-10-09T23:08Z"
-        },
-        {
-          "name": "Karon Prunty",
-          "pos": "CB",
-          "reason": "Hamstring",
-          "as_of": "2026-10-10T01:56Z"
-        }
-      ],
+      "out": [],
       "doubtful": [],
       "ir": [
         {
@@ -1028,30 +780,21 @@
           "pos": "WR",
           "status": "Injured Reserve",
           "reason": "Ankle (Sprain)",
-          "eligible_week": 7,
-          "expected_return": "2026-10-22",
-          "as_of": "2026-10-07T18:07Z"
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-14T21:00Z"
         },
         {
-          "name": "Mack Hollins",
-          "pos": "WR",
-          "status": "Injured Reserve",
-          "reason": "Calf",
-          "eligible_week": 9,
-          "expected_return": "2026-11-08",
-          "as_of": "2026-10-10T20:09Z"
-        },
-        {
-          "name": "Reggie Gilliam",
-          "pos": "FB",
+          "name": "Marcus Bryant",
+          "pos": "OT",
           "status": "Injured Reserve",
           "reason": "Ankle",
-          "eligible_week": 9,
-          "expected_return": "2026-11-08",
-          "as_of": "2026-10-11T00:36Z"
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-15T00:55Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "NO": {
       "qb": {
@@ -1059,31 +802,31 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
+      "out": [],
+      "doubtful": [],
+      "ir": [
         {
-          "name": "Anfernee Jennings",
-          "pos": "LB",
-          "reason": "Knee",
-          "as_of": "2026-10-10T01:54Z"
+          "name": "Jordyn Tyson",
+          "pos": "WR",
+          "status": "Injured Reserve",
+          "reason": "Hamstring (Strain)",
+          "eligible_week": 9,
+          "expected_return": "2026-11-08",
+          "as_of": "2026-10-12T18:59Z"
         },
         {
-          "name": "Jeremiah Wright",
-          "pos": "G",
-          "reason": "Concussion (Concussion)",
-          "as_of": "2026-10-10T01:58Z"
-        },
-        {
-          "name": "Kaden Elliss",
-          "pos": "LB",
-          "reason": "Calf",
-          "as_of": "2026-10-09T22:30Z"
+          "name": "Zach Wood",
+          "pos": "LS",
+          "status": "Injured Reserve",
+          "reason": "Calf (Strain)",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-15T01:22Z"
         }
       ],
-      "doubtful": [],
-      "ir": [],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "NYG": {
       "qb": {
@@ -1091,16 +834,9 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
-        {
-          "name": "Jason Pinnock",
-          "pos": "S",
-          "reason": "Concussion (Concussion)",
-          "as_of": "2026-10-10T02:35Z"
-        }
-      ],
+      "out": [],
       "doubtful": [],
       "ir": [
         {
@@ -1110,7 +846,7 @@
           "reason": "Foot (Surgery)",
           "eligible_week": null,
           "expected_return": "2027-02-15",
-          "as_of": "2026-10-07T23:25Z"
+          "as_of": "2026-10-14T21:17Z"
         },
         {
           "name": "Chauncey Golston",
@@ -1122,7 +858,7 @@
           "as_of": "2026-10-11T01:28Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "NYJ": {
       "qb": {
@@ -1130,35 +866,35 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
+      "out": [],
+      "doubtful": [
         {
           "name": "Adonai Mitchell",
           "pos": "WR",
-          "reason": "Finger",
-          "as_of": "2026-10-09T15:09Z"
+          "reason": "Finger (Surgery)",
+          "as_of": "2026-10-14T16:40Z"
         },
         {
           "name": "Breece Hall",
           "pos": "RB",
           "reason": "Quadriceps",
-          "as_of": "2026-10-09T15:05Z"
+          "as_of": "2026-10-14T16:49Z"
         },
         {
           "name": "Dylan Parham",
           "pos": "G",
           "reason": "Knee",
-          "as_of": "2026-10-10T01:41Z"
+          "as_of": "2026-10-15T00:52Z"
         },
         {
-          "name": "Kiko Mauigoa",
-          "pos": "LB",
-          "reason": "Quadriceps",
-          "as_of": "2026-10-09T22:11Z"
+          "name": "Joseph Ossai",
+          "pos": "DE",
+          "reason": "Ankle",
+          "as_of": "2026-10-14T21:25Z"
         }
       ],
-      "doubtful": [],
       "ir": [
         {
           "name": "Braiden McGregor",
@@ -1168,9 +904,18 @@
           "eligible_week": null,
           "expected_return": "2027-02-15",
           "as_of": "2026-10-07T21:44Z"
+        },
+        {
+          "name": "Omar Cooper Jr.",
+          "pos": "WR",
+          "status": "Injured Reserve",
+          "reason": "Ankle (Sprain)",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-14T20:26Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "PHI": {
       "qb": {
@@ -1178,68 +923,83 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
+      "out": [],
+      "doubtful": [
         {
-          "name": "DeVonta Smith",
-          "pos": "WR",
-          "reason": "Hamstring",
-          "as_of": "2026-10-09T15:34Z"
-        },
-        {
-          "name": "Drew Kendall",
-          "pos": "C",
-          "reason": "Knee",
-          "as_of": "2026-10-10T02:24Z"
-        },
-        {
-          "name": "Hollywood Brown",
-          "pos": "WR",
+          "name": "Jalyx Hunt",
+          "pos": "LB",
           "reason": "Ankle",
-          "as_of": "2026-10-10T00:53Z"
+          "as_of": "2026-10-13T20:28Z"
         },
         {
-          "name": "Marcus Epps",
-          "pos": "S",
-          "reason": "Groin",
-          "as_of": "2026-10-10T01:14Z"
-        },
-        {
-          "name": "Saquon Barkley",
+          "name": "Will Shipley",
           "pos": "RB",
-          "reason": "Hamstring",
-          "as_of": "2026-10-09T15:32Z"
+          "reason": "Foot (Plantar Fasciitis)",
+          "as_of": "2026-10-14T23:13Z"
         }
       ],
-      "doubtful": [],
       "ir": [
         {
-          "name": "Tank Bigsby",
-          "pos": "RB",
+          "name": "Eli Stowers",
+          "pos": "TE",
           "status": "Injured Reserve",
-          "reason": "Abdomen (Surgery)",
-          "eligible_week": 9,
-          "expected_return": "2026-11-08",
-          "as_of": "2026-10-06T23:17Z"
+          "reason": "Quadriceps",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-15T00:23Z"
+        },
+        {
+          "name": "Grant Calcaterra",
+          "pos": "TE",
+          "status": "Injured Reserve",
+          "reason": "Back",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-14T22:27Z"
+        },
+        {
+          "name": "Jakorian Bennett",
+          "pos": "CB",
+          "status": "Injured Reserve",
+          "reason": "Knee",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-15T01:04Z"
+        },
+        {
+          "name": "Landon Dickerson",
+          "pos": "G",
+          "status": "Injured Reserve",
+          "reason": "Knee",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-15T01:09Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "PIT": {
       "qb": {
         "name": "Aaron Rodgers",
         "changed_from_last_week": false,
         "previous_name": null,
-        "status": null,
-        "as_of": "2026-10-11T06:01:52Z"
+        "status": "Active",
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [
         {
-          "name": "Jamel Dean",
-          "pos": "CB",
-          "reason": "Ankle",
-          "as_of": "2026-10-09T23:27Z"
+          "name": "Ben Skowronek",
+          "pos": "WR",
+          "reason": "Calf",
+          "as_of": "2026-10-12T22:08Z"
+        },
+        {
+          "name": "Roman Wilson",
+          "pos": "WR",
+          "reason": "Finger",
+          "as_of": "2026-10-12T19:17Z"
         }
       ],
       "doubtful": [],
@@ -1249,8 +1009,8 @@
           "pos": "S",
           "status": "Injured Reserve",
           "reason": "Knee",
-          "eligible_week": 6,
-          "expected_return": "2026-10-18",
+          "eligible_week": null,
+          "expected_return": null,
           "as_of": "2026-10-09T23:23Z"
         },
         {
@@ -1272,41 +1032,38 @@
           "as_of": "2026-10-10T19:52Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "SEA": {
       "qb": {
         "name": "Sam Darnold",
         "changed_from_last_week": false,
         "previous_name": null,
-        "status": null,
-        "as_of": "2026-10-11T06:01:52Z"
+        "status": "Active",
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [
         {
           "name": "Chazz Surratt",
           "pos": "LB",
           "reason": "Calf",
-          "as_of": "2026-10-10T02:47Z"
+          "as_of": "2026-10-15T01:42Z"
+        },
+        {
+          "name": "Drake Thomas",
+          "pos": "LB",
+          "reason": "Ankle",
+          "as_of": "2026-10-15T00:24Z"
         },
         {
           "name": "Zach Charbonnet",
           "pos": "RB",
           "reason": "Knee - ACL (Surgery)",
-          "as_of": "2026-10-05T17:05Z"
+          "as_of": "2026-10-14T22:14Z"
         }
       ],
       "doubtful": [],
       "ir": [
-        {
-          "name": "Irv Charles",
-          "pos": "WR",
-          "status": "Injured Reserve",
-          "reason": "Knee",
-          "eligible_week": 6,
-          "expected_return": "2026-10-15",
-          "as_of": "2026-10-11T02:02Z"
-        },
         {
           "name": "Julian Neal",
           "pos": "CB",
@@ -1317,7 +1074,7 @@
           "as_of": "2026-10-11T02:04Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "SF": {
       "qb": {
@@ -1325,93 +1082,90 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
       "out": [
         {
-          "name": "James Thompson Jr.",
-          "pos": "DT",
-          "reason": "Ankle (Sprain)",
-          "as_of": "2026-10-10T02:50Z"
+          "name": "Deebo Samuel Sr.",
+          "pos": "WR",
+          "reason": "Hamstring",
+          "as_of": "2026-10-12T19:45Z"
         },
         {
-          "name": "Kyle Juszczyk",
-          "pos": "FB",
-          "reason": "Knee (Sprain)",
-          "as_of": "2026-10-07T18:34Z"
-        },
+          "name": "Garret Wallow",
+          "pos": "LB",
+          "reason": "Hamstring (Strain)",
+          "as_of": "2026-10-12T21:19Z"
+        }
+      ],
+      "doubtful": [
         {
           "name": "Marques Sigle",
           "pos": "S",
           "reason": "Ankle",
-          "as_of": "2026-10-07T18:39Z"
-        },
-        {
-          "name": "Nick Bosa",
-          "pos": "DE",
-          "reason": "Calf (Strain)",
-          "as_of": "2026-10-10T01:33Z"
+          "as_of": "2026-10-13T17:10Z"
         }
       ],
-      "doubtful": [],
-      "ir": [],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "ir": [
+        {
+          "name": "Christian Kirk",
+          "pos": "WR",
+          "status": "Injured Reserve",
+          "reason": "Calf",
+          "eligible_week": 7,
+          "expected_return": "2026-10-25",
+          "as_of": "2026-10-12T21:48Z"
+        },
+        {
+          "name": "Dre Greenlaw",
+          "pos": "LB",
+          "status": "Suspension",
+          "reason": "Suspension",
+          "eligible_week": 7,
+          "expected_return": "2026-10-25",
+          "as_of": "2026-10-14T01:22Z"
+        },
+        {
+          "name": "Nick Martin",
+          "pos": "LB",
+          "status": "Injured Reserve",
+          "reason": "Hamstring",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-13T00:00Z"
+        }
+      ],
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "TB": {
       "qb": {
         "name": "Baker Mayfield",
         "changed_from_last_week": false,
         "previous_name": null,
-        "status": "Out",
-        "as_of": "2026-10-11T06:01:52Z"
+        "status": "Doubtful",
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
-        {
-          "name": "Antoine Winfield Jr.",
-          "pos": "S",
-          "reason": "Ribs (Fracture)",
-          "as_of": "2026-10-08T22:48Z"
-        },
+      "out": [],
+      "doubtful": [
         {
           "name": "Baker Mayfield",
           "pos": "QB",
           "reason": "Thumb (Dislocated)",
-          "as_of": "2026-10-09T15:18Z"
-        },
-        {
-          "name": "Benjamin Morrison",
-          "pos": "CB",
-          "reason": "Quadriceps",
-          "as_of": "2026-10-08T22:48Z"
-        },
-        {
-          "name": "Billy Schrauth",
-          "pos": "G",
-          "reason": "Coach's Decision",
-          "as_of": "2026-10-08T22:48Z"
-        },
-        {
-          "name": "DeMonte Capehart",
-          "pos": "DT",
-          "reason": "Coach's Decision",
-          "as_of": "2026-10-08T22:48Z"
-        },
-        {
-          "name": "Luke Haggard",
-          "pos": "G",
-          "reason": "Coach's Decision",
-          "as_of": "2026-10-08T22:48Z"
-        },
-        {
-          "name": "SirVocea Dennis",
-          "pos": "LB",
-          "reason": "Ankle",
-          "as_of": "2026-10-08T22:48Z"
+          "as_of": "2026-10-14T20:25Z"
         }
       ],
-      "doubtful": [],
-      "ir": [],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "ir": [
+        {
+          "name": "David Sills V",
+          "pos": "WR",
+          "status": "Injured Reserve",
+          "reason": "Hamstring",
+          "eligible_week": null,
+          "expected_return": null,
+          "as_of": "2026-10-12T23:06Z"
+        }
+      ],
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "TEN": {
       "qb": {
@@ -1419,29 +1173,29 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
+      "out": [],
+      "doubtful": [
         {
-          "name": "Amani Hooker",
+          "name": "Kevin Winston Jr.",
           "pos": "S",
-          "reason": "Concussion (Concussion)",
-          "as_of": "2026-10-09T23:43Z"
+          "reason": "Quadriceps",
+          "as_of": "2026-10-14T21:06Z"
         }
       ],
-      "doubtful": [],
       "ir": [
         {
           "name": "Joshua Williams",
           "pos": "CB",
           "status": "Injured Reserve",
           "reason": "Pectoral",
-          "eligible_week": 6,
-          "expected_return": "2026-10-18",
+          "eligible_week": null,
+          "expected_return": null,
           "as_of": "2026-10-10T23:21Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     },
     "WAS": {
       "qb": {
@@ -1449,64 +1203,25 @@
         "changed_from_last_week": false,
         "previous_name": null,
         "status": "Active",
-        "as_of": "2026-10-11T06:01:52Z"
+        "as_of": "2026-10-14T12:51:31Z"
       },
-      "out": [
-        {
-          "name": "Charles Omenihu",
-          "pos": "DE",
-          "reason": "Groin",
-          "as_of": "2026-10-10T02:41Z"
-        },
+      "out": [],
+      "doubtful": [
         {
           "name": "Marcus Mariota",
           "pos": "QB",
           "reason": "Knee - MCL (Sprain)",
-          "as_of": "2026-10-09T21:35Z"
-        },
-        {
-          "name": "Nick Cross",
-          "pos": "S",
-          "reason": "Illness",
-          "as_of": "2026-10-10T01:22Z"
-        },
-        {
-          "name": "Percy Butler",
-          "pos": "S",
-          "reason": "Hamstring",
-          "as_of": "2026-10-10T02:39Z"
-        },
-        {
-          "name": "Stefon Diggs",
-          "pos": "WR",
-          "reason": "Hamstring",
-          "as_of": "2026-10-09T15:40Z"
-        },
-        {
-          "name": "Tyler Owens",
-          "pos": "S",
-          "reason": "Hamstring",
-          "as_of": "2026-10-10T02:45Z"
+          "as_of": "2026-10-13T17:10Z"
         }
       ],
-      "doubtful": [],
       "ir": [
-        {
-          "name": "Jaylin Lane",
-          "pos": "WR",
-          "status": "Injured Reserve",
-          "reason": "Ankle (Surgery)",
-          "eligible_week": null,
-          "expected_return": "2027-02-15",
-          "as_of": "2026-10-06T23:14Z"
-        },
         {
           "name": "Jeremy McNichols",
           "pos": "RB",
           "status": "Injured Reserve",
           "reason": "Quadriceps",
-          "eligible_week": 6,
-          "expected_return": "2026-10-19",
+          "eligible_week": null,
+          "expected_return": null,
           "as_of": "2026-10-11T01:00Z"
         },
         {
@@ -1514,12 +1229,12 @@
           "pos": "CB",
           "status": "Injured Reserve",
           "reason": "Ankle (Sprain)",
-          "eligible_week": 6,
-          "expected_return": "2026-10-19",
+          "eligible_week": null,
+          "expected_return": null,
           "as_of": "2026-10-11T01:02Z"
         }
       ],
-      "updated_at": "2026-10-11T06:40:59Z"
+      "updated_at": "2026-10-15T05:36:19Z"
     }
   }
 }
