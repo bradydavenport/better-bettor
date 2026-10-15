@@ -144,30 +144,47 @@ jobs:
             KEEP=$(sed -n 's/^keep_polling=//p' "$RUNNER_TEMP/gate.out" | tail -1)
             HORIZON=$(sed -n 's/^horizon=//p'   "$RUNNER_TEMP/gate.out" | tail -1)
             COUNT=$(sed -n 's/^game_count=//p'  "$RUNNER_TEMP/gate.out" | tail -1)
+            REASON=$(sed -n 's/^pull_reason=//p' "$RUNNER_TEMP/gate.out" | tail -1)
+            OWEEK=$(sed -n 's/^opener_week=//p' "$RUNNER_TEMP/gate.out" | tail -1)
 
             python3 scripts/alarm.py --from-file "$RUNNER_TEMP/gate-alarms.json" || true
 
-            # A newly reported missed close is real output even on a no-pull run.
+            # A reported missed close, or a newly computed opener fire_at, is real
+            # output even on a run that pulls nothing.
             if [ "$TEST_MODE" != "true" ] && ! git diff --quiet -- data/sniped.json; then
               git add data/sniped.json
-              git commit -q -m "data: record reported missed close(s)"
-              bash scripts/push_with_replay.sh "data: record reported missed close(s)" || echo "::warning::could not push missed-close record"
+              git commit -q -m "data: record snipe state"
+              bash scripts/push_with_replay.sh "data: record snipe state" || echo "::warning::could not push snipe state"
             fi
 
             if [ "$PULL" = "true" ] && [ "$DRY_RUN" != "true" ]; then
-              echo "::group::pull $((PULLS + 1)) — $COUNT game(s) through $HORIZON"
+              echo "::group::pull $((PULLS + 1)) — reason=$REASON ${OWEEK:+week=$OWEEK} ${COUNT:+$COUNT game(s) through $HORIZON}"
               BEFORE=$(stat -c%s data/history.jsonl 2>/dev/null || echo 0)
+              # writer=opener for an opener pull, so "every snipe-closes row is a
+              # close" stays true and CLV grading can rely on it. Rehearsal mode
+              # still overrides both to snipe-test.
+              PULL_WRITER="$WRITER"
+              if [ "$REASON" = "opener" ] && [ "$TEST_MODE" != "true" ]; then
+                PULL_WRITER=opener
+              fi
               python3 fetch_lines.py --sport nfl --days 12 --drop-empty --merge \
                 --markets all --out data/nfl.json --no-render --force \
-                --writer "$WRITER" --require-db \
+                --writer "$PULL_WRITER" --require-db \
                 --alarms-out "$RUNNER_TEMP/pull-alarms.json"
               tail -c +$((BEFORE + 1)) data/history.jsonl > "$RUNNER_TEMP/out/new_rows.jsonl"
               cp data/nfl.json data/usage.json "$RUNNER_TEMP/out/"
               python3 scripts/alarm.py --from-file "$RUNNER_TEMP/pull-alarms.json" || true
 
-              python3 scripts/close_gate.py --mark --state "$STATE" \
-                --horizon "$HORIZON" --ids-out "$RUNNER_TEMP/out/sniped_ids.json" \
-                --no-deadman
+              if [ "$REASON" = "opener" ]; then
+                # --mark-opener ONLY. Marking these games sniped would make the
+                # close gate skip them and lose the week's actual closing lines.
+                python3 scripts/close_gate.py --mark-opener "$OWEEK" \
+                  --state "$STATE" --no-deadman --no-opener
+              else
+                python3 scripts/close_gate.py --mark --state "$STATE" \
+                  --horizon "$HORIZON" --ids-out "$RUNNER_TEMP/out/sniped_ids.json" \
+                  --no-deadman
+              fi
 
               if [ "$TEST_MODE" = "true" ]; then
                 # Never commit a rehearsal's snipe marks. Ledger rows are already
@@ -176,9 +193,14 @@ jobs:
                 git commit -q -m "data: snipe-test rehearsal pull (not a close)"
               else
                 git add data/nfl.json data/usage.json data/history.jsonl data/sniped.json
-                git commit -q -m "data: close snipe — $COUNT game(s) @ $HORIZON"
+                git commit -q -m "${MSG:-data: snipe}"
               fi
-              bash scripts/push_with_replay.sh "data: close snipe — $COUNT game(s) @ $HORIZON"
+              if [ "$REASON" = "opener" ]; then
+                MSG="data: week $OWEEK line opener (all 3 markets)"
+              else
+                MSG="data: close snipe — $COUNT game(s) @ $HORIZON"
+              fi
+              bash scripts/push_with_replay.sh "$MSG"
               PULLS=$((PULLS + 1))
               JUST_PULLED=1
               echo "::endgroup::"

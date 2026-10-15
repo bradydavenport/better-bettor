@@ -110,6 +110,49 @@ without moving its price emits no row), and change detection races when
 Odds data only — never bets, stakes or bankroll. `db_backup.py` enforces this
 with a table allowlist and refuses to publish a dump containing anything else.
 
+`opener` is the per-week record of the **next-week line opener**, keyed on the
+**Sunday's** ISO week:
+
+```json
+"opener": {"2026-W42": {"sunday": "2026-10-18",
+                        "last_sunday_kickoff": "2026-10-19T00:20:00Z",
+                        "fire_at": "2026-10-19T04:20:00Z",
+                        "games": 12,
+                        "triggered_at": "2026-10-19T04:21:00Z"}}
+```
+
+NFL lines for the next week open after the current Sunday's last game, so the
+opener is **event-gated, not a cron**: the last Sunday kickoff in
+`America/New_York` plus 4 hours. DST transitions, a flexed SNF and overtime all
+move it automatically.
+
+Two details that look like detail and are not:
+
+- **The key is the Sunday's ISO week, not the firing day's.** Sunday is the last
+  day of an ISO week, so Sunday 2026-10-18 is `2026-W42` while the Monday the
+  opener fires on is `2026-W43`. Keying off "now" would let it fire twice.
+- **`fire_at` is saved before those games disappear.** `/events` drops a game
+  once it finishes — measured 2026-10-15: zero of 28 events had a kickoff in the
+  past. So at "SNF + 4h" there is no Sunday game left to compute from, and a gate
+  that recomputed at fire time would never fire at all. Every run while the Sunday
+  is still ahead records `fire_at`; the gate then fires off the saved value.
+
+An opener pull writes `writer=opener` and **never marks games as sniped**. If it
+did, the close gate would skip them and a whole week of closing lines would be
+lost to a feature meant to add data.
+
+### Known items
+
+- **`pull-rosters` cron times are fixed-UTC and drift an hour at DST.**
+  `0 1 * * 4` / `0 1 * * 0` were chosen as "Wed/Sat evening ET, after injury
+  reports are filed": Sat 21:00 EDT becomes Sat 20:00 EST. Both are still after
+  the 16:00 ET Saturday elevation deadline, so it works — the margin just narrows
+  from 5h to 4h. Deferred deliberately: the real fix is the same event-gating
+  pattern used for the opener (trigger off the ESPN calendar's report deadlines
+  rather than a clock), not hand-tuning a cron twice a year. Every other
+  fixed-UTC cron is mid-morning or deliberately away from a slate, so its drift
+  is immaterial.
+
 ## Alarms
 
 Three conditions open a GitHub issue rather than just annotating a log, because
