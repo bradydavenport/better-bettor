@@ -5,17 +5,16 @@
     "sport": "nfl",
     "pulled_markets": [
       "h2h",
-      "spreads",
-      "totals"
+      "spreads"
     ],
     "markets_present": [
       "h2h",
       "spreads",
       "totals"
     ],
-    "fetched_at": "2026-10-18T12:45:10Z",
+    "fetched_at": "2026-10-18T13:07:23Z",
     "last_pull": {
-      "pull-lines": "2026-10-17T13:07:23Z",
+      "pull-lines": "2026-10-18T13:07:23Z",
       "snipe-test": "2026-09-30T02:05:15Z",
       "snipe-closes": "2026-10-18T12:45:10Z"
     },
@@ -24,18 +23,18 @@
     "spread_convention": "`spread` is the HOME team's line; POSITIVE = home favored (spread 3.5 -> home favored by 3.5, away is +3.5). spread_price_*, moneyline_* and *_price_* are American odds. Times are UTC ISO-8601. Each market has its own *_at stamp = when it was last pulled; null there = not pulled yet, null on a value = pulled but the book had no line.",
     "usage": {
       "month": "2026-10",
-      "credits_used": 84,
-      "credits_remaining": 416,
+      "credits_used": 86,
+      "credits_remaining": 414,
       "monthly_cap": 500,
-      "pct_used": 16.8,
+      "pct_used": 17.2,
       "pulls_left_est": 138,
       "today": "2026-10-18",
-      "today_credits": 3,
+      "today_credits": 5,
       "daily_limit": 15,
-      "buffer_used": 78,
-      "last_call": "2026-10-18T12:46:00Z",
-      "last_cost": 3,
-      "updated_at": "2026-10-18T12:46:00Z",
+      "buffer_used": 80,
+      "last_call": "2026-10-18T13:07:35Z",
+      "last_cost": 2,
+      "updated_at": "2026-10-18T13:07:35Z",
       "note": "The Odds API free tier = 500 credits per calendar month, resets on the 1st. Exceeding it returns HTTP 401 until the reset \u2014 never a charge. Cost = 1 credit per market per pull (all 3 markets = 3, --markets spread = 1)."
     }
   },
@@ -50,16 +49,16 @@
       "book": "pinnacle",
       "moneyline_home": -134,
       "moneyline_away": 121,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": 2.5,
       "spread_price_home": -103,
       "spread_price_away": -107,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 42.5,
       "total_over_price": -104,
       "total_under_price": -109,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     },
     {
       "game_id": "7c312fdf24fb35f58b0e07c2932cc997",
@@ -71,16 +70,16 @@
       "book": "pinnacle",
       "moneyline_home": 101,
       "moneyline_away": -112,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": -1.0,
       "spread_price_home": -107,
       "spread_price_away": -103,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 52.5,
       "total_over_price": -108,
       "total_under_price": -104,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     },
     {
       "game_id": "e86227938fd3cf008fc5648fb5128344",
@@ -92,16 +91,16 @@
       "book": "pinnacle",
       "moneyline_home": 153,
       "moneyline_away": -170,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": -3.0,
       "spread_price_home": 103,
       "spread_price_away": -114,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 39.5,
       "total_over_price": -106,
       "total_under_price": -106,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     },
     {
       "game_id": "caca2d752fe1a1779029082e95332fcc",
@@ -113,16 +112,16 @@
       "book": "pinnacle",
       "moneyline_home": 145,
       "moneyline_away": -161,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": -3.0,
       "spread_price_home": -105,
       "spread_price_away": -105,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 39.0,
       "total_over_price": -108,
       "total_under_price": -104,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     },
     {
       "game_id": "84aa9e190e625d7e9cd67e1f157a45b4",
@@ -134,16 +133,16 @@
       "book": "pinnacle",
       "moneyline_home": -303,
       "moneyline_away": 261,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": 6.5,
       "spread_price_home": -102,
       "spread_price_away": -108,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 45.0,
       "total_over_price": 100,
       "total_under_price": -113,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     },
     {
       "game_id": "0b0b582b32b09ab6ff6664ffae0c9653",
@@ -155,16 +154,16 @@
       "book": "pinnacle",
       "moneyline_home": -345,
       "moneyline_away": 292,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": 7.5,
       "spread_price_home": 106,
       "spread_price_away": -117,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 43.5,
       "total_over_price": 101,
       "total_under_price": -113,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     },
     {
       "game_id": "1cf74afd313e9fd300e1462012b174cb",
@@ -176,16 +175,16 @@
       "book": "pinnacle",
       "moneyline_home": -102,
       "moneyline_away": -108,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": -1.0,
       "spread_price_home": -109,
       "spread_price_away": -101,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 46.0,
       "total_over_price": -105,
       "total_under_price": -107,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     },
     {
       "game_id": "27f3994841ce8081c0b7349cf3d1e3d7",
@@ -197,16 +196,16 @@
       "book": "pinnacle",
       "moneyline_home": 116,
       "moneyline_away": -128,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": -2.5,
       "spread_price_home": -110,
       "spread_price_away": 100,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 38.5,
       "total_over_price": -108,
       "total_under_price": -104,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     },
     {
       "game_id": "3729ac6d2a66b642850caf2044cdc658",
@@ -218,16 +217,16 @@
       "book": "pinnacle",
       "moneyline_home": -843,
       "moneyline_away": 625,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": 13.5,
       "spread_price_home": 104,
       "spread_price_away": -115,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 51.5,
       "total_over_price": -108,
       "total_under_price": -104,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     },
     {
       "game_id": "45b2690b350ed45145c7a716b18e8e66",
@@ -239,16 +238,16 @@
       "book": "pinnacle",
       "moneyline_home": 197,
       "moneyline_away": -223,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": -4.5,
       "spread_price_home": -103,
       "spread_price_away": -107,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 53.5,
       "total_over_price": -104,
       "total_under_price": -108,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     },
     {
       "game_id": "20fefae8c296247460ba5773caa42218",
@@ -260,16 +259,16 @@
       "book": "pinnacle",
       "moneyline_home": -440,
       "moneyline_away": 362,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": 8.0,
       "spread_price_home": 108,
       "spread_price_away": -119,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 41.5,
       "total_over_price": -105,
       "total_under_price": -107,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     },
     {
       "game_id": "82fd5a159fa130e67abab93a9537f70b",
@@ -281,16 +280,16 @@
       "book": "pinnacle",
       "moneyline_home": -109,
       "moneyline_away": -101,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": 1.0,
       "spread_price_home": -101,
       "spread_price_away": -109,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 53.5,
       "total_over_price": -111,
       "total_under_price": -101,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     },
     {
       "game_id": "f122527f003276d3bca19efa48c902c1",
@@ -302,16 +301,16 @@
       "book": "pinnacle",
       "moneyline_home": -410,
       "moneyline_away": 329,
-      "moneyline_at": "2026-10-18T12:46:00Z",
+      "moneyline_at": "2026-10-18T13:07:35Z",
       "spread": 7.5,
       "spread_price_home": -104,
       "spread_price_away": -108,
-      "spread_at": "2026-10-18T12:46:00Z",
+      "spread_at": "2026-10-18T13:07:35Z",
       "total": 52.5,
       "total_over_price": -103,
       "total_under_price": -111,
       "total_at": "2026-10-18T12:46:00Z",
-      "book_last_update": "2026-10-18T12:45:09Z"
+      "book_last_update": "2026-10-18T13:07:09Z"
     }
   ]
 }
