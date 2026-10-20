@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "updated_at": "2026-10-20T04:01:21Z",
+    "updated_at": "2026-10-20T20:01:21Z",
     "count": 29,
     "pruned_older_than_days": 14,
     "notes": "game_ids whose closing line has already been captured, so the */15 gate does not pull for them again. Keyed by The Odds API event id. Entries are dropped 14 days after kickoff. Written only after a pull succeeds \u2014 never before, so a failed pull retries.",
@@ -170,6 +170,13 @@
       "fire_at": "2026-10-26T04:20:00Z",
       "games": 12,
       "computed_at": "2026-10-20T04:01:21Z"
+    },
+    "2026-W44": {
+      "sunday": "2026-11-01",
+      "last_sunday_kickoff": "2026-11-02T01:20:00Z",
+      "fire_at": "2026-11-02T05:20:00Z",
+      "games": 12,
+      "computed_at": "2026-10-20T20:01:21Z"
     }
   }
 }
