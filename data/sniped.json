@@ -1,18 +1,13 @@
 {
   "_meta": {
-    "updated_at": "2026-10-22T23:31:35Z",
-    "count": 30,
+    "updated_at": "2026-10-23T00:31:08Z",
+    "count": 29,
     "pruned_older_than_days": 14,
     "notes": "game_ids whose closing line has already been captured, so the */15 gate does not pull for them again. Keyed by The Odds API event id. Entries are dropped 14 days after kickoff. Written only after a pull succeeds \u2014 never before, so a failed pull retries.",
     "opener_note": "per-ISO-week record of the next-week line opener, keyed on the SUNDAY's ISO week (Sunday is the last day of an ISO week, so the Monday it fires on is a different week). fire_at is the last Sunday kickoff in America/New_York plus 4h, saved BEFORE those games disappear: /events drops a game once it finishes, so a gate that recomputed at fire time would never fire. triggered_at present = that week is done.",
     "missed_note": "games whose close was NEVER captured and whose miss has already been reported as a GitHub issue comment. Tracked so the 6h lookback reports each game once instead of once every 15 minutes. These are losses, not recoveries."
   },
   "sniped": {
-    "259b5df9aa0d10257f56de78523495e0": {
-      "commence_time": "2026-10-09T00:15:00Z",
-      "matchup": "Tampa Bay Buccaneers @ Dallas Cowboys",
-      "sniped_at": "2026-10-08T23:30:14Z"
-    },
     "21b26266f3d78af02eb672e606275d95": {
       "commence_time": "2026-10-11T13:30:00Z",
       "matchup": "Philadelphia Eagles @ Jacksonville Jaguars",
@@ -180,8 +175,8 @@
       "sunday": "2026-11-01",
       "last_sunday_kickoff": "2026-11-02T01:20:00Z",
       "fire_at": "2026-11-02T05:20:00Z",
-      "games": 12,
-      "computed_at": "2026-10-20T20:01:21Z"
+      "games": 11,
+      "computed_at": "2026-10-23T00:31:08Z"
     }
   }
 }
