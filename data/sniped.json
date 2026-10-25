@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "updated_at": "2026-10-25T13:48:31Z",
-    "count": 29,
+    "updated_at": "2026-10-25T16:17:11Z",
+    "count": 36,
     "pruned_older_than_days": 14,
     "notes": "game_ids whose closing line has already been captured, so the */15 gate does not pull for them again. Keyed by The Odds API event id. Entries are dropped 14 days after kickoff. Written only after a pull succeeds \u2014 never before, so a failed pull retries.",
     "opener_note": "per-ISO-week record of the next-week line opener, keyed on the SUNDAY's ISO week (Sunday is the last day of an ISO week, so the Monday it fires on is a different week). fire_at is the last Sunday kickoff in America/New_York plus 4h, saved BEFORE those games disappear: /events drops a game once it finishes, so a gate that recomputed at fire time would never fire. triggered_at present = that week is done.",
@@ -152,6 +152,41 @@
       "commence_time": "2026-10-25T13:30:00Z",
       "matchup": "Pittsburgh Steelers @ New Orleans Saints",
       "sniped_at": "2026-10-25T12:46:55Z"
+    },
+    "b1be064fb52a198a62109c279e7ab24c": {
+      "commence_time": "2026-10-25T17:00:00Z",
+      "matchup": "San Francisco 49ers @ Atlanta Falcons",
+      "sniped_at": "2026-10-25T16:17:11Z"
+    },
+    "550ec5290f935d311995affbcb0b5c79": {
+      "commence_time": "2026-10-25T17:00:00Z",
+      "matchup": "Cincinnati Bengals @ Baltimore Ravens",
+      "sniped_at": "2026-10-25T16:17:11Z"
+    },
+    "2823e986597c449ab94126cd5ed3fae9": {
+      "commence_time": "2026-10-25T17:00:00Z",
+      "matchup": "Tampa Bay Buccaneers @ Carolina Panthers",
+      "sniped_at": "2026-10-25T16:17:11Z"
+    },
+    "5dce18baccec5d3ad5fb3a3ce52f7619": {
+      "commence_time": "2026-10-25T17:00:00Z",
+      "matchup": "Cleveland Browns @ Tennessee Titans",
+      "sniped_at": "2026-10-25T16:17:11Z"
+    },
+    "2bba7fde6f97d0e54403d53676e4ab63": {
+      "commence_time": "2026-10-25T17:00:00Z",
+      "matchup": "New York Giants @ Houston Texans",
+      "sniped_at": "2026-10-25T16:17:11Z"
+    },
+    "f3992ad4496724baf7dcd1ef58245d6b": {
+      "commence_time": "2026-10-25T17:00:00Z",
+      "matchup": "Indianapolis Colts @ Minnesota Vikings",
+      "sniped_at": "2026-10-25T16:17:11Z"
+    },
+    "be5dd120ca08b43d647b6caa8953500a": {
+      "commence_time": "2026-10-25T17:00:00Z",
+      "matchup": "Miami Dolphins @ New York Jets",
+      "sniped_at": "2026-10-25T16:17:11Z"
     }
   },
   "missed": {},
