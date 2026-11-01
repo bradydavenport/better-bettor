@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "updated_at": "2026-11-01T18:15:21Z",
+    "updated_at": "2026-11-01T20:20:43Z",
     "count": 28,
     "pruned_older_than_days": 14,
     "notes": "game_ids whose closing line has already been captured, so the */15 gate does not pull for them again. Keyed by The Odds API event id. Entries are dropped 14 days after kickoff. Written only after a pull succeeds \u2014 never before, so a failed pull retries.",
@@ -8,11 +8,6 @@
     "missed_note": "games whose close was NEVER captured and whose miss has already been reported as a GitHub issue comment. Tracked so the 6h lookback reports each game once instead of once every 15 minutes. These are losses, not recoveries."
   },
   "sniped": {
-    "3729ac6d2a66b642850caf2044cdc658": {
-      "commence_time": "2026-10-18T20:05:00Z",
-      "matchup": "Arizona Cardinals @ Los Angeles Rams",
-      "sniped_at": "2026-10-18T19:40:46Z"
-    },
     "45b2690b350ed45145c7a716b18e8e66": {
       "commence_time": "2026-10-18T20:25:00Z",
       "matchup": "Buffalo Bills @ Las Vegas Raiders",
@@ -147,6 +142,11 @@
       "commence_time": "2026-11-01T18:00:00Z",
       "matchup": "Las Vegas Raiders @ New York Jets",
       "sniped_at": "2026-11-01T17:16:22Z"
+    },
+    "2ff84d3f6053d083c8c0a5bebf7cdd4c": {
+      "commence_time": "2026-11-01T21:05:00Z",
+      "matchup": "Los Angeles Chargers @ Los Angeles Rams",
+      "sniped_at": "2026-11-01T20:20:43Z"
     }
   },
   "missed": {},
