@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "updated_at": "2026-11-08T14:49:40Z",
+    "updated_at": "2026-11-08T17:17:09Z",
     "count": 28,
     "pruned_older_than_days": 14,
     "notes": "game_ids whose closing line has already been captured, so the */15 gate does not pull for them again. Keyed by The Odds API event id. Entries are dropped 14 days after kickoff. Written only after a pull succeeds \u2014 never before, so a failed pull retries.",
@@ -8,41 +8,6 @@
     "missed_note": "games whose close was NEVER captured and whose miss has already been reported as a GitHub issue comment. Tracked so the 6h lookback reports each game once instead of once every 15 minutes. These are losses, not recoveries."
   },
   "sniped": {
-    "b1be064fb52a198a62109c279e7ab24c": {
-      "commence_time": "2026-10-25T17:00:00Z",
-      "matchup": "San Francisco 49ers @ Atlanta Falcons",
-      "sniped_at": "2026-10-25T16:17:11Z"
-    },
-    "550ec5290f935d311995affbcb0b5c79": {
-      "commence_time": "2026-10-25T17:00:00Z",
-      "matchup": "Cincinnati Bengals @ Baltimore Ravens",
-      "sniped_at": "2026-10-25T16:17:11Z"
-    },
-    "2823e986597c449ab94126cd5ed3fae9": {
-      "commence_time": "2026-10-25T17:00:00Z",
-      "matchup": "Tampa Bay Buccaneers @ Carolina Panthers",
-      "sniped_at": "2026-10-25T16:17:11Z"
-    },
-    "5dce18baccec5d3ad5fb3a3ce52f7619": {
-      "commence_time": "2026-10-25T17:00:00Z",
-      "matchup": "Cleveland Browns @ Tennessee Titans",
-      "sniped_at": "2026-10-25T16:17:11Z"
-    },
-    "2bba7fde6f97d0e54403d53676e4ab63": {
-      "commence_time": "2026-10-25T17:00:00Z",
-      "matchup": "New York Giants @ Houston Texans",
-      "sniped_at": "2026-10-25T16:17:11Z"
-    },
-    "f3992ad4496724baf7dcd1ef58245d6b": {
-      "commence_time": "2026-10-25T17:00:00Z",
-      "matchup": "Indianapolis Colts @ Minnesota Vikings",
-      "sniped_at": "2026-10-25T16:17:11Z"
-    },
-    "be5dd120ca08b43d647b6caa8953500a": {
-      "commence_time": "2026-10-25T17:00:00Z",
-      "matchup": "Miami Dolphins @ New York Jets",
-      "sniped_at": "2026-10-25T16:17:11Z"
-    },
     "436119bb3ccdaa6ed7808aa3ebd82b76": {
       "commence_time": "2026-10-25T20:05:00Z",
       "matchup": "Denver Broncos @ Arizona Cardinals",
@@ -147,6 +112,41 @@
       "commence_time": "2026-11-08T14:30:00Z",
       "matchup": "Cincinnati Bengals @ Atlanta Falcons",
       "sniped_at": "2026-11-08T13:45:33Z"
+    },
+    "014282b888c741b7d70c857c09f40aa7": {
+      "commence_time": "2026-11-08T18:00:00Z",
+      "matchup": "Denver Broncos @ Carolina Panthers",
+      "sniped_at": "2026-11-08T17:17:09Z"
+    },
+    "e571bab6736f9338130a78a4f75c3231": {
+      "commence_time": "2026-11-08T18:00:00Z",
+      "matchup": "Cleveland Browns @ New Orleans Saints",
+      "sniped_at": "2026-11-08T17:17:09Z"
+    },
+    "415fc42e72888c63e82f7bce24c65391": {
+      "commence_time": "2026-11-08T18:00:00Z",
+      "matchup": "Dallas Cowboys @ Indianapolis Colts",
+      "sniped_at": "2026-11-08T17:17:09Z"
+    },
+    "44d8c37868b700e90f816db7c5df5cdd": {
+      "commence_time": "2026-11-08T18:00:00Z",
+      "matchup": "Detroit Lions @ Miami Dolphins",
+      "sniped_at": "2026-11-08T17:17:09Z"
+    },
+    "e354e6a04b1cb9c96e549b863debb92e": {
+      "commence_time": "2026-11-08T18:00:00Z",
+      "matchup": "New York Jets @ Kansas City Chiefs",
+      "sniped_at": "2026-11-08T17:17:09Z"
+    },
+    "89de07377e0aa8ffaa2ae6a7dc0855cc": {
+      "commence_time": "2026-11-08T18:00:00Z",
+      "matchup": "Los Angeles Rams @ Washington Commanders",
+      "sniped_at": "2026-11-08T17:17:09Z"
+    },
+    "fe93e6ab1e553c0169936a0a983c324f": {
+      "commence_time": "2026-11-08T18:00:00Z",
+      "matchup": "New York Giants @ Philadelphia Eagles",
+      "sniped_at": "2026-11-08T17:17:09Z"
     }
   },
   "missed": {},
