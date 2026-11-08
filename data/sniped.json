@@ -1,23 +1,13 @@
 {
   "_meta": {
-    "updated_at": "2026-11-08T20:21:10Z",
-    "count": 28,
+    "updated_at": "2026-11-08T20:41:10Z",
+    "count": 29,
     "pruned_older_than_days": 14,
     "notes": "game_ids whose closing line has already been captured, so the */15 gate does not pull for them again. Keyed by The Odds API event id. Entries are dropped 14 days after kickoff. Written only after a pull succeeds \u2014 never before, so a failed pull retries.",
     "opener_note": "per-ISO-week record of the next-week line opener, keyed on the SUNDAY's ISO week (Sunday is the last day of an ISO week, so the Monday it fires on is a different week). fire_at is the last Sunday kickoff in America/New_York plus 4h, saved BEFORE those games disappear: /events drops a game once it finishes, so a gate that recomputed at fire time would never fire. triggered_at present = that week is done.",
     "missed_note": "games whose close was NEVER captured and whose miss has already been reported as a GitHub issue comment. Tracked so the 6h lookback reports each game once instead of once every 15 minutes. These are losses, not recoveries."
   },
   "sniped": {
-    "e8e5715eefb6a9ce64765e9ddf49c0cc": {
-      "commence_time": "2026-10-25T20:25:00Z",
-      "matchup": "Green Bay Packers @ Detroit Lions",
-      "sniped_at": "2026-10-25T19:41:03Z"
-    },
-    "f7679cf18454e4d88a8f2b990c3f08ac": {
-      "commence_time": "2026-10-25T20:25:00Z",
-      "matchup": "Los Angeles Rams @ Las Vegas Raiders",
-      "sniped_at": "2026-10-25T19:41:03Z"
-    },
     "176d474ed8b2bbf1eb4d7e9c56b4bf22": {
       "commence_time": "2026-10-26T00:20:00Z",
       "matchup": "Kansas City Chiefs @ Seattle Seahawks",
@@ -146,7 +136,22 @@
     "39aeac43cea7b12558b91cdab1255a10": {
       "commence_time": "2026-11-08T21:05:00Z",
       "matchup": "Houston Texans @ Los Angeles Chargers",
-      "sniped_at": "2026-11-08T20:21:10Z"
+      "sniped_at": "2026-11-08T20:41:10Z"
+    },
+    "240e23b02b1e3fef655d04a286b5a623": {
+      "commence_time": "2026-11-08T21:25:00Z",
+      "matchup": "Arizona Cardinals @ Seattle Seahawks",
+      "sniped_at": "2026-11-08T20:41:10Z"
+    },
+    "2922c573ec3df8466c4a34975e446898": {
+      "commence_time": "2026-11-08T21:25:00Z",
+      "matchup": "Green Bay Packers @ New England Patriots",
+      "sniped_at": "2026-11-08T20:41:10Z"
+    },
+    "ac9d38a18d5c92814233a31aa9a48d78": {
+      "commence_time": "2026-11-08T21:25:00Z",
+      "matchup": "Las Vegas Raiders @ San Francisco 49ers",
+      "sniped_at": "2026-11-08T20:41:10Z"
     }
   },
   "missed": {},
