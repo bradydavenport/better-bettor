@@ -1,7 +1,7 @@
 {
   "_meta": {
     "updated_at": "2026-11-20T04:31:12Z",
-    "count": 29,
+    "count": 36,
     "pruned_older_than_days": 14,
     "notes": "game_ids whose closing line has already been captured, so the */15 gate does not pull for them again. Keyed by The Odds API event id. Entries are dropped 14 days after kickoff. Written only after a pull succeeds \u2014 never before, so a failed pull retries.",
     "opener_note": "per-ISO-week record of the next-week line opener, keyed on the SUNDAY's ISO week (Sunday is the last day of an ISO week, so the Monday it fires on is a different week). fire_at is the last Sunday kickoff in America/New_York plus 4h, saved BEFORE those games disappear: /events drops a game once it finishes, so a gate that recomputed at fire time would never fire. triggered_at present = that week is done.",
@@ -152,31 +152,41 @@
       "commence_time": "2026-11-20T01:15:00Z",
       "matchup": "Indianapolis Colts @ Houston Texans",
       "sniped_at": "2026-11-20T00:31:03Z"
-    }
-  },
-  "missed": {},
-  "opener": {
-    "2026-W46": {
-      "sunday": "2026-11-15",
-      "last_sunday_kickoff": "2026-11-16T01:23:00Z",
-      "fire_at": "2026-11-16T05:23:00Z",
-      "games": 1,
-      "computed_at": "2026-11-16T01:20:57Z",
-      "triggered_at": "2026-11-16T05:32:01Z"
     },
-    "2026-W47": {
-      "sunday": "2026-11-22",
-      "last_sunday_kickoff": "2026-11-23T01:20:00Z",
-      "fire_at": "2026-11-23T05:20:00Z",
-      "games": 11,
-      "computed_at": "2026-11-17T04:31:06Z"
+    "403a88701352da05b0710a9e883b803e": {
+      "commence_time": "2026-11-22T18:00:00Z",
+      "matchup": "Arizona Cardinals @ Kansas City Chiefs",
+      "sniped_at": "2026-11-22T17:16:28Z"
     },
-    "2026-W48": {
-      "sunday": "2026-11-29",
-      "last_sunday_kickoff": "2026-11-30T01:20:00Z",
-      "fire_at": "2026-11-30T05:20:00Z",
-      "games": 10,
-      "computed_at": "2026-11-20T04:31:12Z"
+    "4527f57f5bc32742d8194af1ccf7da7e": {
+      "commence_time": "2026-11-22T18:00:00Z",
+      "matchup": "Baltimore Ravens @ Carolina Panthers",
+      "sniped_at": "2026-11-22T17:16:28Z"
+    },
+    "4c5b1c0843a260278e95eb93e7787576": {
+      "commence_time": "2026-11-22T18:00:00Z",
+      "matchup": "Miami Dolphins @ Buffalo Bills",
+      "sniped_at": "2026-11-22T17:16:28Z"
+    },
+    "3ea90704fb576633bd1e2fa5aafd9ea3": {
+      "commence_time": "2026-11-22T18:00:00Z",
+      "matchup": "New Orleans Saints @ Chicago Bears",
+      "sniped_at": "2026-11-22T17:16:28Z"
+    },
+    "5e63079b678f8c13419adc169fff02d3": {
+      "commence_time": "2026-11-22T18:00:00Z",
+      "matchup": "Tennessee Titans @ Dallas Cowboys",
+      "sniped_at": "2026-11-22T17:16:28Z"
+    },
+    "41e2dd69bddd65d7e823d9ed61cc2afc": {
+      "commence_time": "2026-11-22T18:00:00Z",
+      "matchup": "Tampa Bay Buccaneers @ Detroit Lions",
+      "sniped_at": "2026-11-22T17:16:28Z"
+    },
+    "cbe45bafcc2615fc1d96cbc12840377a": {
+      "commence_time": "2026-11-22T18:00:00Z",
+      "matchup": "Pittsburgh Steelers @ Philadelphia Eagles",
+      "sniped_at": "2026-11-22T17:16:28Z"
     }
   }
 }
