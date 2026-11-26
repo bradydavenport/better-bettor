@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "updated_at": "2026-11-26T04:40:47Z",
+    "updated_at": "2026-11-26T17:16:51Z",
     "count": 29,
     "pruned_older_than_days": 14,
     "notes": "game_ids whose closing line has already been captured, so the */15 gate does not pull for them again. Keyed by The Odds API event id. Entries are dropped 14 days after kickoff. Written only after a pull succeeds \u2014 never before, so a failed pull retries.",
@@ -152,6 +152,23 @@
       "commence_time": "2026-11-26T18:00:00Z",
       "matchup": "Chicago Bears @ Detroit Lions",
       "sniped_at": "2026-11-26T17:16:39Z"
+    }
+  },
+  "missed": {},
+  "opener": {
+    "2026-W48": {
+      "sunday": "2026-11-29",
+      "last_sunday_kickoff": "2026-11-30T01:20:00Z",
+      "fire_at": "2026-11-30T05:20:00Z",
+      "games": 10,
+      "computed_at": "2026-11-26T17:16:51Z"
+    },
+    "2026-W49": {
+      "sunday": "2026-12-06",
+      "last_sunday_kickoff": "2026-12-07T01:20:00Z",
+      "fire_at": "2026-12-07T05:20:00Z",
+      "games": 12,
+      "computed_at": "2026-11-26T17:16:51Z"
     }
   }
 }
